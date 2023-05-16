@@ -1,0 +1,6 @@
+*.log
+*.o
+disk
+fs
+diskfile
+.vscode
