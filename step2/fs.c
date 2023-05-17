@@ -24,11 +24,12 @@ static inline int hex2int(char ch) {
 typedef unsigned int uint;
 
 static inline uint min(uint a, uint b) { return a < b ? a : b; }
+static inline uint max(uint a, uint b) { return a < b ? b : a; }
 
 // Block size in bytes
 #define BSIZE 256
 
-#define NDIRECT 11
+#define NDIRECT 10
 
 #define MAXFILEB (NDIRECT + APB + APB * APB)
 
@@ -44,6 +45,7 @@ struct dinode { // 64 bytes
     unsigned short nlink;            // Number of links to inode
     uint mtime;             // Last modified time
     uint size;              // Size in bytes
+    uint blocks;            // Number of blocks, may be larger than size
     uint addrs[NDIRECT+2];  // Data block addresses
 };
 
@@ -56,6 +58,8 @@ struct inode {
     unsigned short nlink;            // Number of links to inode
     uint mtime;             // Last modified time
     uint size;              // Size in bytes
+    uint blocks;            // Number of blocks, may be larger than size
+                            // not consider index blocks
     uint addrs[NDIRECT+2];  // Data block addresses
 };
 
@@ -168,6 +172,7 @@ struct inode* iget(uint inum) {
     ip->nlink = dip->nlink;
     ip->mtime = dip->mtime;
     ip->size = dip->size;
+    ip->blocks = dip->blocks;
     memcpy(ip->addrs, dip->addrs, sizeof(ip->addrs));
     Log("iget: inum %d", inum);
     prtinode(ip);
@@ -209,6 +214,7 @@ void iupdate(struct inode* ip) {
     dip->nlink = ip->nlink;
     dip->mtime = ip->mtime;
     dip->size = ip->size;
+    dip->blocks = ip->blocks;
     memcpy(dip->addrs, ip->addrs, sizeof(ip->addrs));
     bwrite(IBLOCK(ip->inum, sb), buf);
 }
@@ -253,12 +259,15 @@ void itrunc(struct inode *ip) {
     }
 
     ip->size = 0;
+    ip->blocks = 0;
     iupdate(ip);
 }
 
 // if not exists, alloc a block for ip->addrs bn
 // return the block number
 // will not update the inode, update it yourself when freeing
+// you'd better use this continuously
+// will not increase ip->blocks, writei will do that
 int bmap(struct inode *ip, uint bn) {
     char buf[BSIZE];
     uint addr;
@@ -337,8 +346,9 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
         bwrite(bmap(ip, off / BSIZE), buf);
     }
 
-    if(n > 0 && off > ip->size){
+    if (n > 0 && off > ip->size) { // size is larger
         ip->size = off;
+        ip->blocks = max(1 + (off - 1) / BSIZE, ip->blocks); // blocks may change
         iupdate(ip);
     }
     return n;
@@ -357,6 +367,7 @@ int icreate(short type, char *name, uint pinum) {
     ip->nlink = 1;
     ip->mtime = time(NULL);
     ip->size = 0;
+    ip->blocks = 0;
     uint inum = ip->inum;
     if (type == T_DIR) {
         struct dirent des[2];
@@ -380,12 +391,6 @@ int icreate(short type, char *name, uint pinum) {
     return 0;
 }
 
-// append a file to dir
-// will not check if the file already exists
-int dappend(struct inode *ip, struct dirent *de) {
-    return writei(ip, (char *)de, ip->size, sizeof(struct dirent));
-}
-
 #define MAXARGS 5
 // parse a line into commands
 int parse(char *line, char *cmds[]) {
@@ -394,7 +399,7 @@ int parse(char *line, char *cmds[]) {
     p = strtok(line, " ");
     while (p) {
         cmds[ncmd++] = p;
-        if (ncmd >= MAXARGS) return -1;
+        if (ncmd > MAXARGS) return -1;
         p = strtok(NULL, " ");
     }
     cmds[ncmd] = NULL;
@@ -718,26 +723,88 @@ int cmd_w(int argc, char *argv[]) {
         return 0;
     }
 
-    int len = atoi(argv[2]);
+    uint len = atoi(argv[2]);
     // TODO convert hex
     writei(ip, argv[3], 0, len);
-    ip->size = len;
-    // TODO check for size
-    iupdate(ip);
+    if (len < ip->size) {
+        // if the new data is shorter, truncate
+        ip->size = len;
+        iupdate(ip);
+    }
     free(ip);
     return 0;
 }
 int cmd_i(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    printf("Goodbye!\n");
-    Log("Exit");
-    return -1;
+    if (argc != 5) {
+        printf("Usage: i <filename> <pos> <length> <data>\n");
+        return 0;
+    }
+    uint inum = findinum(argv[1]);
+    if (inum == NINODES) {
+        printf("Not found!\n");
+        return 0;
+    }
+    struct inode *ip = iget(inum);
+    if (!ip) return 0;
+    if (ip->type != T_FILE) {
+        printf("Not a file\n");
+        free(ip);
+        return 0;
+    }
+    uint pos = atoi(argv[2]);
+    uint len = atoi(argv[3]);
+    
+    if (pos >= ip->size) {
+        pos = ip->size;
+        writei(ip, argv[4], pos, len);
+    } else {
+        char *buf = malloc(ip->size - pos);
+        // [pos, size) -> [pos+len, size+len)
+        readi(ip, buf, pos, ip->size - pos);
+        writei(ip, argv[4], pos, len);
+        writei(ip, buf, pos + len, ip->size - pos);
+    }
+
+    free(ip);
+    return 0;
 }
 int cmd_d(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    printf("Goodbye!\n");
-    Log("Exit");
-    return -1;
+    if (argc != 4) {
+        printf("Usage: d <filename> <pos> <length>\n");
+        return 0;
+    }
+    uint inum = findinum(argv[1]);
+    if (inum == NINODES) {
+        printf("Not found!\n");
+        return 0;
+    }
+    struct inode *ip = iget(inum);
+    if (!ip) return 0;
+    if (ip->type != T_FILE) {
+        printf("Not a file\n");
+        free(ip);
+        return 0;
+    }
+    uint pos = atoi(argv[2]);
+    uint len = atoi(argv[3]);
+
+    if (pos + len >= ip->size) {
+        ip->size = pos;
+        iupdate(ip);
+    } else {
+        // [pos + len, size) -> [pos, size - len)
+        uint copylen = ip->size - pos - len;
+        char *buf = malloc(copylen);
+        readi(ip, buf, pos + len, copylen);
+        writei(ip, buf, pos, copylen);
+        ip->size -= len;
+        iupdate(ip);
+    }
+
+    free(ip);
+    return 0;
 }
 int cmd_e(int argc, char *argv[]) {
     printf("Goodbye!\n");
@@ -779,7 +846,7 @@ int main(int argc, char *argv[]) {
 
     // command
     static char buf[1024];
-    static char *cmds[MAXARGS];
+    static char *cmds[MAXARGS + 1]; // +1 for NULL
     int NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
     while (1) {
         fgets(buf, sizeof(buf), stdin);
