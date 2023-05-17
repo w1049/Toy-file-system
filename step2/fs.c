@@ -19,7 +19,7 @@ static inline int hex2int(char ch) {
     if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
     return -1;
 }
-// static char hex[] = "0123456789abcdef";
+static char hex[] = "0123456789abcdef";
 
 typedef unsigned int uint;
 
@@ -388,7 +388,7 @@ int icreate(short type, char *name, uint pinum) {
     return 0;
 }
 
-#define MAXARGS 5
+#define MAXARGS 6
 // parse a line into commands
 int parse(char *line, char *cmds[]) {
     char *p;
@@ -519,7 +519,7 @@ int delinum(uint inum) {
 
 int cmd_mk(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 2) {
+    if (argc <= 1) {
         printf("Usage: mk <filename>\n");
         return 0;
     }
@@ -536,7 +536,7 @@ int cmd_mk(int argc, char *argv[]) {
 }
 int cmd_mkdir(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 2) {
+    if (argc <= 1) {
         printf("Usage: mkdir <dirname>\n");
         return 0;
     }
@@ -553,7 +553,7 @@ int cmd_mkdir(int argc, char *argv[]) {
 }
 int cmd_rm(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 2) {
+    if (argc <= 1) {
         printf("Usage: rm <filename>\n");
         return 0;
     }
@@ -581,7 +581,7 @@ int cmd_rm(int argc, char *argv[]) {
 }
 int cmd_cd(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 2) {
+    if (argc <= 1) {
         printf("Usage: cd <dirname>\n");
         return 0;
     }
@@ -603,7 +603,7 @@ int cmd_cd(int argc, char *argv[]) {
 }
 int cmd_rmdir(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 2) {
+    if (argc <= 1) {
         printf("Usage: rmdir <dirname>\n");
         return 0;
     }
@@ -681,8 +681,8 @@ int cmd_ls(int argc, char *argv[]) {
 }
 int cmd_cat(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 2) {
-        printf("Usage: cat <filename>\n");
+    if (argc <= 1) {
+        printf("Usage: cat <filename> [-h, hex]\n");
         return 0;
     }
     uint inum = findinum(argv[1]);
@@ -697,18 +697,31 @@ int cmd_cat(int argc, char *argv[]) {
         free(ip);
         return 0;
     }
+
     char *buf = malloc(ip->size + 1);
     readi(ip, buf, 0, ip->size);
-    buf[ip->size] = 0;
-    printf("%s\n", buf);
+    if (argc >= 3 && strcmp(argv[2], "-h") == 0) {
+        char *str = malloc(ip->size * 2 + 1);
+        for (int i = 0; i < ip->size; i++) {
+            str[i * 2] = hex[buf[i] / 16];
+            str[i * 2 + 1] = hex[buf[i] % 16];
+        }
+        str[ip->size * 2] = '\0';
+        printf("%s\n", str);
+        free(str);
+    } else {
+        buf[ip->size] = 0;
+        printf("%s\n", buf);
+    }
+    
     free(buf);
     free(ip);
     return 0;
 }
 int cmd_w(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 4) {
-        printf("Usage: w <filename> <length> <data>\n");
+    if (argc <= 3) {
+        printf("Usage: w <filename> <length> <data> [-h, hex]\n");
         return 0;
     }
     uint inum = findinum(argv[1]);
@@ -725,20 +738,47 @@ int cmd_w(int argc, char *argv[]) {
     }
 
     uint len = atoi(argv[2]);
-    // TODO convert hex
-    writei(ip, argv[3], 0, len);
+    char *data = argv[3];
+    int h = argc >= 5 && strcmp(argv[4], "-h") == 0;
+    if (h) {
+        if (strlen(data) != len * 2) {
+            printf("No\n");
+            Warn("Invalid data length");
+            free(ip);
+            return 0;
+        }
+        char *buf = malloc(len);
+        for (int i = 0; i < len; i++) {
+            int a = hex2int(data[i * 2]);
+            int b = hex2int(data[i * 2 + 1]);
+            if (a < 0 || b < 0) {
+                printf("No\n");
+                Warn("Invalid data");
+                free(buf);
+                free(ip);
+                return 0;
+            }
+            buf[i] = a * 16 + b;
+        }
+        data = buf;
+    }
+
+    writei(ip, data, 0, len);
+
     if (len < ip->size) {
         // if the new data is shorter, truncate
         ip->size = len;
         iupdate(ip);
     }
+
+    if (h) free(data);
     free(ip);
     return 0;
 }
 int cmd_i(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 5) {
-        printf("Usage: i <filename> <pos> <length> <data>\n");
+    if (argc <= 4) {
+        printf("Usage: i <filename> <pos> <length> <data> [-h, hex]\n");
         return 0;
     }
     uint inum = findinum(argv[1]);
@@ -755,24 +795,49 @@ int cmd_i(int argc, char *argv[]) {
     }
     uint pos = atoi(argv[2]);
     uint len = atoi(argv[3]);
+    char *data = argv[4];
+    int h = argc >= 6 && strcmp(argv[5], "-h") == 0;
+    if (h) {
+        if (strlen(data) != len * 2) {
+            printf("No\n");
+            Warn("Invalid data length");
+            free(ip);
+            return 0;
+        }
+        char *buf = malloc(len);
+        for (int i = 0; i < len; i++) {
+            int a = hex2int(data[i * 2]);
+            int b = hex2int(data[i * 2 + 1]);
+            if (a < 0 || b < 0) {
+                printf("No\n");
+                Warn("Invalid data");
+                free(buf);
+                free(ip);
+                return 0;
+            }
+            buf[i] = a * 16 + b;
+        }
+        data = buf;
+    }
 
     if (pos >= ip->size) {
         pos = ip->size;
-        writei(ip, argv[4], pos, len);
+        writei(ip, data, pos, len);
     } else {
         char *buf = malloc(ip->size - pos);
         // [pos, size) -> [pos+len, size+len)
         readi(ip, buf, pos, ip->size - pos);
-        writei(ip, argv[4], pos, len);
+        writei(ip, data, pos, len);
         writei(ip, buf, pos + len, ip->size - pos);
     }
 
+    if (h) free(data);
     free(ip);
     return 0;
 }
 int cmd_d(int argc, char *argv[]) {
     if (checkformat()) return 0;
-    if (argc != 4) {
+    if (argc <= 3) {
         printf("Usage: d <filename> <pos> <length>\n");
         return 0;
     }
