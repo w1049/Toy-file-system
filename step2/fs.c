@@ -1,16 +1,16 @@
 #include <assert.h>
 #include <err.h>
 #include <fcntl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <unistd.h>
 #include <time.h>
-#include <math.h>
+#include <unistd.h>
 
-#include "log.h"
 #include "bio.h"
+#include "log.h"
 
 // hex and dec
 static inline int hex2int(char ch) {
@@ -34,33 +34,33 @@ static inline uint max(uint a, uint b) { return a < b ? b : a; }
 #define MAXFILEB (NDIRECT + APB + APB * APB)
 
 enum {
-    T_DIR = 1,              // Directory
-    T_FILE = 2,             // File
+    T_DIR = 1,   // Directory
+    T_FILE = 2,  // File
 };
 
-struct dinode { // 64 bytes
-    unsigned short type: 2;          // File type: 0empty, 1dir or 2file
-    unsigned short mode: 4;          // File mode: rwrw for owner and others
-    unsigned short uid: 10;          // Owner id
-    unsigned short nlink;            // Number of links to inode
-    uint mtime;             // Last modified time
-    uint size;              // Size in bytes
-    uint blocks;            // Number of blocks, may be larger than size
-    uint addrs[NDIRECT+2];  // Data block addresses
+struct dinode {               // 64 bytes
+    unsigned short type : 2;  // File type: 0empty, 1dir or 2file
+    unsigned short mode : 4;  // File mode: rwrw for owner and others
+    unsigned short uid : 10;  // Owner id
+    unsigned short nlink;     // Number of links to inode
+    uint mtime;               // Last modified time
+    uint size;                // Size in bytes
+    uint blocks;              // Number of blocks, may be larger than size
+    uint addrs[NDIRECT + 2];  // Data block addresses
 };
 
 // inode in memory
 struct inode {
     uint inum;
-    unsigned short type: 2;          // File type: 0empty, 1dir or 2file
-    unsigned short mode: 4;          // File mode: rwrw for owner and others
-    unsigned short uid: 10;          // Owner id
-    unsigned short nlink;            // Number of links to inode
-    uint mtime;             // Last modified time
-    uint size;              // Size in bytes
-    uint blocks;            // Number of blocks, may be larger than size
-                            // not consider index blocks
-    uint addrs[NDIRECT+2];  // Data block addresses
+    unsigned short type : 2;  // File type: 0empty, 1dir or 2file
+    unsigned short mode : 4;  // File mode: rwrw for owner and others
+    unsigned short uid : 10;  // Owner id
+    unsigned short nlink;     // Number of links to inode
+    uint mtime;               // Last modified time
+    uint size;                // Size in bytes
+    uint blocks;              // Number of blocks, may be larger than size
+                              // not consider index blocks
+    uint addrs[NDIRECT + 2];  // Data block addresses
 };
 
 static inline void prtinode(struct inode *ip) {
@@ -70,19 +70,19 @@ static inline void prtinode(struct inode *ip) {
 
 #define MAXNAME 12
 
-struct dirent { // 16 bytes
+struct dirent {  // 16 bytes
     uint inum;
     char name[MAXNAME];
 };
 
 // Super block, at most 256 bytes
 struct superblock {
-    uint magic;             // Magic number, "MYFS"
-    uint size;              // Size in blocks
-    uint nblocks;           // Number of data blocks
-    uint ninodes;           // Number of inodes
-    uint inodestart;        // Block number of first inode
-    uint bmapstart;         // Block number of first free map block
+    uint magic;       // Magic number, "MYFS"
+    uint size;        // Size in blocks
+    uint nblocks;     // Number of data blocks
+    uint ninodes;     // Number of inodes
+    uint inodestart;  // Block number of first inode
+    uint bmapstart;   // Block number of first free map block
 } sb;
 
 #define NINODES 1024
@@ -143,8 +143,7 @@ void bfree(uint bno) {
     bread(BBLOCK(bno, sb), buf);
     int i = bno % BPB;
     int m = 1 << (i % 8);
-    if ((buf[i / 8] & m) == 0)
-        Warn("freeing free block");
+    if ((buf[i / 8] & m) == 0) Warn("freeing free block");
     buf[i / 8] &= ~m;
     bwrite(BBLOCK(bno, sb), buf);
 }
@@ -152,14 +151,14 @@ void bfree(uint bno) {
 // get the inode with inum
 // remember to free it!
 // return NULL if not found
-struct inode* iget(uint inum) {
+struct inode *iget(uint inum) {
     if (inum < 0 || inum >= sb.ninodes) {
         Warn("iget: inum out of range");
         return NULL;
     }
     char buf[BSIZE];
     bread(IBLOCK(inum, sb), buf);
-    struct dinode *dip = (struct dinode*)buf + inum % IPB;
+    struct dinode *dip = (struct dinode *)buf + inum % IPB;
     if (dip->type == 0) {
         Warn("iget: no such inode");
         return NULL;
@@ -186,7 +185,7 @@ struct inode *ialloc(short type) {
     char buf[BSIZE];
     for (int i = 0; i < sb.ninodes; i++) {
         bread(IBLOCK(i, sb), buf);
-        struct dinode *dip = (struct dinode*)buf + i % IPB;
+        struct dinode *dip = (struct dinode *)buf + i % IPB;
         if (dip->type == 0) {
             memset(dip, 0, sizeof(struct dinode));
             dip->type = type;
@@ -204,10 +203,10 @@ struct inode *ialloc(short type) {
 }
 
 // write the inode to disk
-void iupdate(struct inode* ip) {
+void iupdate(struct inode *ip) {
     char buf[BSIZE];
     bread(IBLOCK(ip->inum, sb), buf);
-    struct dinode *dip = (struct dinode*)buf + ip->inum % IPB;
+    struct dinode *dip = (struct dinode *)buf + ip->inum % IPB;
     dip->type = ip->type;
     dip->mode = ip->mode;
     dip->uid = ip->uid;
@@ -232,30 +231,28 @@ void itrunc(struct inode *ip) {
 
     if (ip->addrs[NDIRECT]) {
         bread(ip->addrs[NDIRECT], buf);
-        uint *addrs = (uint*)buf;
+        uint *addrs = (uint *)buf;
         for (int i = 0; i < apb; i++)
-            if (addrs[i])
-                bfree(addrs[i]);
+            if (addrs[i]) bfree(addrs[i]);
         bfree(ip->addrs[NDIRECT]);
         ip->addrs[NDIRECT] = 0;
     }
 
-    if (ip->addrs[NDIRECT+1]) {
-        bread(ip->addrs[NDIRECT+1], buf);
-        uint *addrs = (uint*)buf;
+    if (ip->addrs[NDIRECT + 1]) {
+        bread(ip->addrs[NDIRECT + 1], buf);
+        uint *addrs = (uint *)buf;
         char buf2[BSIZE];
         for (int i = 0; i < apb; i++) {
             if (addrs[i]) {
                 bread(addrs[i], buf2);
-                uint *addrs2 = (uint*)buf2;
+                uint *addrs2 = (uint *)buf2;
                 for (int j = 0; j < apb; j++)
-                    if (addrs2[j])
-                        bfree(addrs2[j]);
+                    if (addrs2[j]) bfree(addrs2[j]);
                 bfree(addrs[i]);
             }
         }
-        bfree(ip->addrs[NDIRECT+1]);
-        ip->addrs[NDIRECT+1] = 0;
+        bfree(ip->addrs[NDIRECT + 1]);
+        ip->addrs[NDIRECT + 1] = 0;
     }
 
     ip->size = 0;
@@ -277,10 +274,10 @@ int bmap(struct inode *ip, uint bn) {
         return addr;
     } else if (bn < NDIRECT + APB) {
         bn -= NDIRECT;
-        uint saddr = ip->addrs[NDIRECT]; // single addr
+        uint saddr = ip->addrs[NDIRECT];  // single addr
         if (!saddr) saddr = ip->addrs[NDIRECT] = balloc();
         bread(saddr, buf);
-        uint *addrs = (uint*)buf;
+        uint *addrs = (uint *)buf;
         addr = addrs[bn];
         if (!addr) {
             addr = addrs[bn] = balloc();
@@ -290,18 +287,18 @@ int bmap(struct inode *ip, uint bn) {
     } else if (bn < MAXFILEB) {
         bn -= NDIRECT + APB;
         uint a = bn / APB, b = bn % APB;
-        uint daddr = ip->addrs[NDIRECT+1]; // double addr
-        if (!daddr) daddr = ip->addrs[NDIRECT+1] = balloc();
+        uint daddr = ip->addrs[NDIRECT + 1];  // double addr
+        if (!daddr) daddr = ip->addrs[NDIRECT + 1] = balloc();
         bread(daddr, buf);
-        uint *addrs = (uint*)buf;
+        uint *addrs = (uint *)buf;
 
-        uint saddr = addrs[a]; // single addr
+        uint saddr = addrs[a];  // single addr
         if (!saddr) {
             saddr = addrs[a] = balloc();
             bwrite(daddr, buf);
         }
         bread(saddr, buf);
-        addrs = (uint*)buf;
+        addrs = (uint *)buf;
 
         addr = addrs[b];
         if (!addr) {
@@ -317,12 +314,11 @@ int bmap(struct inode *ip, uint bn) {
 
 int readi(struct inode *ip, char *dst, uint off, uint n) {
     char buf[BSIZE];
-    if(off > ip->size || off + n < off)
-        return -1;
-    if(off + n > ip->size) // read till EOF
+    if (off > ip->size || off + n < off) return -1;
+    if (off + n > ip->size)  // read till EOF
         n = ip->size - off;
 
-    for(uint tot = 0, m; tot < n; tot += m, off += m, dst += m){
+    for (uint tot = 0, m; tot < n; tot += m, off += m, dst += m) {
         bread(bmap(ip, off / BSIZE), buf);
         m = min(n - tot, BSIZE - off % BSIZE);
         memcpy(dst, buf + off % BSIZE, m);
@@ -334,21 +330,21 @@ int readi(struct inode *ip, char *dst, uint off, uint n) {
 // will update
 int writei(struct inode *ip, char *src, uint off, uint n) {
     char buf[BSIZE];
-    if(off > ip->size || off + n < off)
-        return -1; // off is larger than size || off overflow
-    if(off + n > MAXFILEB * BSIZE)
-        return -1; // too large
+    if (off > ip->size || off + n < off)
+        return -1;  // off is larger than size || off overflow
+    if (off + n > MAXFILEB * BSIZE) return -1;  // too large
 
-    for(uint tot = 0, m; tot < n; tot += m, off += m, src += m) {
+    for (uint tot = 0, m; tot < n; tot += m, off += m, src += m) {
         bread(bmap(ip, off / BSIZE), buf);
         m = min(n - tot, BSIZE - off % BSIZE);
         memcpy(buf + off % BSIZE, src, m);
         bwrite(bmap(ip, off / BSIZE), buf);
     }
 
-    if (n > 0 && off > ip->size) { // size is larger
+    if (n > 0 && off > ip->size) {  // size is larger
         ip->size = off;
-        ip->blocks = max(1 + (off - 1) / BSIZE, ip->blocks); // blocks may change
+        ip->blocks =
+            max(1 + (off - 1) / BSIZE, ip->blocks);  // blocks may change
         iupdate(ip);
     }
     return n;
@@ -376,11 +372,12 @@ int icreate(short type, char *name, uint pinum) {
         des[1].inum = pinum;
         strcpy(des[1].name, "..");
         writei(ip, (char *)&des, ip->size, sizeof(des));
-    } else iupdate(ip);
+    } else
+        iupdate(ip);
     Log("Create inode %d, mtime=%d", ip->inum, ip->mtime);
     prtinode(ip);
     free(ip);
-    if (pinum != inum) { // root will not enter here
+    if (pinum != inum) {  // root will not enter here
         ip = iget(pinum);
         struct dirent de;
         de.inum = inum;
@@ -432,10 +429,11 @@ int cmd_f(int argc, char *argv[]) {
     sb.size = fsize;
     sb.nblocks = nblocks;
     sb.ninodes = NINODES;
-    sb.inodestart = 1; // 0 for superblock
+    sb.inodestart = 1;  // 0 for superblock
     sb.bmapstart = 1 + ninodesblocks;
-    Log("sb: magic=0x%x size=%d nblocks=%d ninodes=%d inodestart=%d bmapstart=%d",
-        sb.magic, sb.size, sb.nblocks, sb.ninodes, sb.inodestart, sb.bmapstart);    
+    Log("sb: magic=0x%x size=%d nblocks=%d ninodes=%d inodestart=%d "
+        "bmapstart=%d",
+        sb.magic, sb.size, sb.nblocks, sb.ninodes, sb.inodestart, sb.bmapstart);
 
     memset(buf, 0, BSIZE);
     memcpy(buf, &sb, sizeof(sb));
@@ -445,11 +443,10 @@ int cmd_f(int argc, char *argv[]) {
     for (int i = 0; i < nmeta; i += BPB) {
         memset(buf, 0, BSIZE);
         for (int j = 0; j < BPB; j++)
-            if (i + j < nmeta)
-                buf[j / 8] |= 1 << (j % 8);
+            if (i + j < nmeta) buf[j / 8] |= 1 << (j % 8);
         bwrite(BBLOCK(i, sb), buf);
     }
-    
+
     // make root dir
     icreate(T_DIR, NULL, 0);
     printf("Yes\n");
@@ -478,14 +475,14 @@ uint findinum(char *name) {
     struct inode *ip = iget(pwdinum);
     if (!ip) return 0;
 
-    char *buf = malloc(ip->size); // TODO fixed-size buf
+    char *buf = malloc(ip->size);  // TODO fixed-size buf
     readi(ip, buf, 0, ip->size);
-    struct dirent *de = (struct dirent*)buf;
+    struct dirent *de = (struct dirent *)buf;
 
     int result = NINODES;
     int nfile = ip->size / sizeof(struct dirent);
     for (int i = 0; i < nfile; i++) {
-        if (de[i].inum == NINODES) continue; // deleted
+        if (de[i].inum == NINODES) continue;  // deleted
         if (strcmp(de[i].name, name) == 0) {
             result = de[i].inum;
             break;
@@ -501,16 +498,17 @@ int delinum(uint inum) {
     struct inode *ip = iget(pwdinum);
     if (!ip) return 0;
 
-    char *buf = malloc(ip->size); // TODO fixed-size buf
+    char *buf = malloc(ip->size);  // TODO fixed-size buf
     readi(ip, buf, 0, ip->size);
-    struct dirent *de = (struct dirent*)buf;
+    struct dirent *de = (struct dirent *)buf;
 
     int nfile = ip->size / sizeof(struct dirent);
     for (int i = 0; i < nfile; i++) {
-        if (de[i].inum == NINODES) continue; // deleted
+        if (de[i].inum == NINODES) continue;  // deleted
         if (de[i].inum == inum) {
             de[i].inum = NINODES;
-            writei(ip, (char *)&de[i], i * sizeof(struct dirent), sizeof(struct dirent));
+            writei(ip, (char *)&de[i], i * sizeof(struct dirent),
+                   sizeof(struct dirent));
             break;
         }
     }
@@ -624,14 +622,15 @@ int cmd_rmdir(int argc, char *argv[]) {
 
     // if dir is not empty
     int empty = 1;
-    char *buf = malloc(ip->size); // TODO fixed-size buf
+    char *buf = malloc(ip->size);  // TODO fixed-size buf
     readi(ip, buf, 0, ip->size);
-    struct dirent *de = (struct dirent*)buf;
+    struct dirent *de = (struct dirent *)buf;
 
     int nfile = ip->size / sizeof(struct dirent);
     for (int i = 0; i < nfile; i++) {
-        if (de[i].inum == NINODES) continue; // deleted
-        if (strcmp(de[i].name, ".") == 0 || strcmp(de[i].name, "..") == 0) continue;
+        if (de[i].inum == NINODES) continue;  // deleted
+        if (strcmp(de[i].name, ".") == 0 || strcmp(de[i].name, "..") == 0)
+            continue;
         empty = 0;
         break;
     }
@@ -657,20 +656,22 @@ int cmd_ls(int argc, char *argv[]) {
     struct inode *ip = iget(pwdinum);
     if (!ip) return 0;
 
-    char *buf = malloc(ip->size); // TODO fixed-size buf
+    char *buf = malloc(ip->size);  // TODO fixed-size buf
     readi(ip, buf, 0, ip->size);
-    struct dirent *de = (struct dirent*)buf;
+    struct dirent *de = (struct dirent *)buf;
 
     int nfile = ip->size / sizeof(struct dirent);
-    char str[100]; // for time
+    char str[100];  // for time
     for (int i = 0; i < nfile; i++) {
-        if (de[i].inum == NINODES) continue; // deleted
+        if (de[i].inum == NINODES) continue;  // deleted
         struct inode *sub = iget(de[i].inum);
-        Log("Entry %d: name=%s", de[i].inum, de[i].name); prtinode(sub);
+        Log("Entry %d: name=%s", de[i].inum, de[i].name);
+        prtinode(sub);
         time_t mtime = sub->mtime;
         struct tm *tmptr = localtime(&mtime);
         strftime(str, sizeof(str), "%Y-%m-%d %H:%M:%S", tmptr);
-        printf("%s\t%s\t%s\t%d bytes\n", sub->type == T_DIR ? "d" : "f", de[i].name, str, sub->size);
+        printf("%s\t%s\t%s\t%d bytes\n", sub->type == T_DIR ? "d" : "f",
+               de[i].name, str, sub->size);
         free(sub);
     }
     free(buf);
@@ -754,7 +755,7 @@ int cmd_i(int argc, char *argv[]) {
     }
     uint pos = atoi(argv[2]);
     uint len = atoi(argv[3]);
-    
+
     if (pos >= ip->size) {
         pos = ip->size;
         writei(ip, argv[4], pos, len);
@@ -816,18 +817,10 @@ static struct {
     const char *name;
     int (*handler)(int, char **);
 } cmd_table[] = {
-    {"f", cmd_f},
-    {"mk", cmd_mk},
-    {"mkdir", cmd_mkdir},
-    {"rm", cmd_rm},
-    {"cd", cmd_cd},
-    {"rmdir", cmd_rmdir},
-    {"ls", cmd_ls},
-    {"cat", cmd_cat},
-    {"w", cmd_w},
-    {"i", cmd_i},
-    {"d", cmd_d},
-    {"e", cmd_e},
+    {"f", cmd_f},   {"mk", cmd_mk},   {"mkdir", cmd_mkdir},
+    {"rm", cmd_rm}, {"cd", cmd_cd},   {"rmdir", cmd_rmdir},
+    {"ls", cmd_ls}, {"cat", cmd_cat}, {"w", cmd_w},
+    {"i", cmd_i},   {"d", cmd_d},     {"e", cmd_e},
 };
 
 void sbinit() {
@@ -846,7 +839,7 @@ int main(int argc, char *argv[]) {
 
     // command
     static char buf[1024];
-    static char *cmds[MAXARGS + 1]; // +1 for NULL
+    static char *cmds[MAXARGS + 1];  // +1 for NULL
     int NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
     while (1) {
         fgets(buf, sizeof(buf), stdin);
