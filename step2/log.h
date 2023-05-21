@@ -31,4 +31,14 @@ static inline void log_close(void) { fclose(log_file); }
         fflush(log_file);                                         \
     } while (0)
 
+#ifdef DEBUG
+#define Debug(format, ...)                                        \
+    do {                                                          \
+        fprintf(log_file, "[DEBUG] " format "\n", ##__VA_ARGS__); \
+        fflush(log_file);                                         \
+    } while (0)
+#else
+#define Debug(format, ...)
+#endif
+
 #endif

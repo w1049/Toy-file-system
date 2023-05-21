@@ -64,7 +64,7 @@ struct inode {
 };
 
 static inline void prtinode(struct inode *ip) {
-    Log("inode %u: type %u, mode %x, uid %u, nlink %u, mtime %u, size %u",
+    Debug("inode %u: type %u, mode %x, uid %u, nlink %u, mtime %u, size %u",
         ip->inum, ip->type, ip->mode, ip->uid, ip->nlink, ip->mtime, ip->size);
 }
 
@@ -173,7 +173,7 @@ struct inode *iget(uint inum) {
     ip->size = dip->size;
     ip->blocks = dip->blocks;
     memcpy(ip->addrs, dip->addrs, sizeof(ip->addrs));
-    Log("iget: inum %d", inum);
+    Debug("iget: inum %d", inum);
     prtinode(ip);
     return ip;
 }
@@ -193,7 +193,7 @@ struct inode *ialloc(short type) {
             struct inode *ip = calloc(1, sizeof(struct inode));
             ip->inum = i;
             ip->type = type;
-            Log("ialloc: inum %d, type=%d", i, type);
+            Debug("ialloc: inum %d, type=%d", i, type);
             prtinode(ip);
             return ip;
         }
@@ -350,14 +350,22 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
     return n;
 }
 
+#define MAGIC 0x5346594d
+
+#define PrtYes() do { printf("Yes\n"); Log("Success"); } while (0)
+#define PrtNo(x) do { printf("No\n"); Error(x); } while (0)
+#define CheckIP(x) do { if (!ip) { printf("No\n"); Error("ip is NULL"); return x; } } while (0)
+#define CheckFmt() do { if (sb.magic != MAGIC) { PrtNo("Not formatted"); } } while (0)
+
 #define UID 666
 #define ROOTINO 0
 
-// create a file in pinum
+// create a file in parent pinum
 // will not check name
+// return 0 for success 
 int icreate(short type, char *name, uint pinum) {
     struct inode *ip = ialloc(type);
-    if (!ip) return 1;
+    CheckIP(1);
     ip->mode = 0b1111;
     ip->uid = UID;
     ip->nlink = 1;
@@ -374,10 +382,11 @@ int icreate(short type, char *name, uint pinum) {
         writei(ip, (char *)&des, ip->size, sizeof(des));
     } else
         iupdate(ip);
-    Log("Create inode %d, mtime=%d", ip->inum, ip->mtime);
+    Log("Create %s inode %d, inside directory inode %d", type == T_DIR ? "dir" : "file", ip->inum, pinum);
     prtinode(ip);
     free(ip);
     if (pinum != inum) {  // root will not enter here
+    // for normal files, add it to the parent directory
         ip = iget(pinum);
         struct dirent de;
         de.inum = inum;
@@ -403,13 +412,6 @@ int parse(char *line, char *cmds[]) {
     return ncmd;
 }
 
-#define MAGIC 0x5346594d
-// return 0 for ok, 1 for not ok
-static inline int checkformat() {
-    if (sb.magic == MAGIC) return 0;
-    printf("Please format first!\n");
-    return 1;
-}
 
 // return a negative value to exit
 int cmd_f(int argc, char *argv[]) {
@@ -448,14 +450,13 @@ int cmd_f(int argc, char *argv[]) {
     }
 
     // make root dir
-    icreate(T_DIR, NULL, 0);
-    printf("Yes\n");
-    Log("Format");
+    if (!icreate(T_DIR, NULL, 0)) PrtYes();
     return 0;
 }
 
 uint pwdinum = 0;
 
+// check if name is valid
 int validname(char *name) {
     int len = strlen(name);
     if (len >= MAXNAME) return 0;
@@ -473,9 +474,9 @@ int validname(char *name) {
 // return inum of the file
 uint findinum(char *name) {
     struct inode *ip = iget(pwdinum);
-    if (!ip) return 0;
+    CheckIP(NINODES);
 
-    char *buf = malloc(ip->size);  // TODO fixed-size buf
+    char *buf = malloc(ip->size);
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
@@ -496,9 +497,9 @@ uint findinum(char *name) {
 // delete inode from pwd
 int delinum(uint inum) {
     struct inode *ip = iget(pwdinum);
-    if (!ip) return 0;
+    CheckIP(0);
 
-    char *buf = malloc(ip->size);  // TODO fixed-size buf
+    char *buf = malloc(ip->size);
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
@@ -518,54 +519,54 @@ int delinum(uint inum) {
 }
 
 int cmd_mk(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 1) {
-        printf("Usage: mk <filename>\n");
+        PrtNo("Usage: mk <filename>");
         return 0;
     }
     if (!validname(argv[1])) {
-        printf("Invalid name!\n");
+        PrtNo("Invalid name!");
         return 0;
     }
     if (findinum(argv[1]) != NINODES) {
-        printf("Already exists!\n");
+        PrtNo("Already exists!");
         return 0;
     }
-    icreate(T_FILE, argv[1], pwdinum);
+    if (!icreate(T_FILE, argv[1], pwdinum)) PrtYes();
     return 0;
 }
 int cmd_mkdir(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 1) {
-        printf("Usage: mkdir <dirname>\n");
+        PrtNo("Usage: mkdir <dirname>");
         return 0;
     }
     if (!validname(argv[1])) {
-        printf("Invalid name!\n");
+        PrtNo("Invalid name!");
         return 0;
     }
     if (findinum(argv[1]) != NINODES) {
-        printf("Already exists!\n");
+        PrtNo("Already exists!");
         return 0;
     }
-    icreate(T_DIR, argv[1], pwdinum);
+    if (!icreate(T_DIR, argv[1], pwdinum)) PrtYes();
     return 0;
 }
 int cmd_rm(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 1) {
-        printf("Usage: rm <filename>\n");
+        PrtNo("Usage: rm <filename>");
         return 0;
     }
     uint inum = findinum(argv[1]);
     if (inum == NINODES) {
-        printf("Not found!\n");
+        PrtNo("Not found!");
         return 0;
     }
     struct inode *ip = iget(inum);
-    if (!ip) return 0;
+    CheckIP(0);
     if (ip->type != T_FILE) {
-        printf("Not a file, please use rmdir\n");
+        PrtNo("Not a file, please use rmdir");
         free(ip);
         return 0;
     }
@@ -577,52 +578,54 @@ int cmd_rm(int argc, char *argv[]) {
     free(ip);
 
     delinum(inum);
+    PrtYes();
     return 0;
 }
 int cmd_cd(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 1) {
-        printf("Usage: cd <dirname>\n");
+        PrtNo("Usage: cd <dirname>");
         return 0;
     }
     uint inum = findinum(argv[1]);
     if (inum == NINODES) {
-        printf("Not found!\n");
+        PrtNo("Not found!");
         return 0;
     }
     struct inode *ip = iget(inum);
-    if (!ip) return 0;
+    CheckIP(0);
     if (ip->type != T_DIR) {
-        printf("Not a directory\n");
+        PrtNo("Not a directory");
         free(ip);
         return 0;
     }
     pwdinum = inum;
     free(ip);
+    PrtYes();
     return 0;
 }
 int cmd_rmdir(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 1) {
-        printf("Usage: rmdir <dirname>\n");
+        PrtNo("Usage: rmdir <dirname>");
         return 0;
     }
     uint inum = findinum(argv[1]);
     if (inum == NINODES) {
-        printf("Not found!\n");
+        PrtNo("Not found!");
         return 0;
     }
     struct inode *ip = iget(inum);
-    if (!ip) return 0;
+    CheckIP(0);
     if (ip->type != T_DIR) {
-        printf("Not a dir, please use rm\n");
+        PrtNo("Not a dir, please use rm");
         free(ip);
         return 0;
     }
 
     // if dir is not empty
     int empty = 1;
-    char *buf = malloc(ip->size);  // TODO fixed-size buf
+    char *buf = malloc(ip->size);
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
@@ -637,7 +640,7 @@ int cmd_rmdir(int argc, char *argv[]) {
     free(buf);
 
     if (!empty) {
-        printf("Directory not empty!\n");
+        PrtNo("Directory not empty!");
         free(ip);
         return 0;
     }
@@ -646,17 +649,18 @@ int cmd_rmdir(int argc, char *argv[]) {
     itrunc(ip);
     free(ip);
     delinum(inum);
+    PrtYes();
     return 0;
 }
 
 // do not check if pwd is valid
 // now no arg
 int cmd_ls(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     struct inode *ip = iget(pwdinum);
-    if (!ip) return 0;
+    CheckIP(0);
 
-    char *buf = malloc(ip->size);  // TODO fixed-size buf
+    char *buf = malloc(ip->size);
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
@@ -666,7 +670,6 @@ int cmd_ls(int argc, char *argv[]) {
         if (de[i].inum == NINODES) continue;  // deleted
         struct inode *sub = iget(de[i].inum);
         Log("Entry %d: name=%s", de[i].inum, de[i].name);
-        prtinode(sub);
         time_t mtime = sub->mtime;
         struct tm *tmptr = localtime(&mtime);
         strftime(str, sizeof(str), "%Y-%m-%d %H:%M:%S", tmptr);
@@ -676,24 +679,24 @@ int cmd_ls(int argc, char *argv[]) {
     }
     free(buf);
     free(ip);
-    Log("List");
+
     return 0;
 }
 int cmd_cat(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 1) {
-        printf("Usage: cat <filename> [-h, hex]\n");
+        PrtNo("Usage: cat <filename> [-h, hex]");
         return 0;
     }
     uint inum = findinum(argv[1]);
     if (inum == NINODES) {
-        printf("Not found!\n");
+        PrtNo("Not found!");
         return 0;
     }
     struct inode *ip = iget(inum);
-    if (!ip) return 0;
+    CheckIP(0);
     if (ip->type != T_FILE) {
-        printf("Not a file\n");
+        PrtNo("Not a file");
         free(ip);
         return 0;
     }
@@ -719,20 +722,20 @@ int cmd_cat(int argc, char *argv[]) {
     return 0;
 }
 int cmd_w(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 3) {
-        printf("Usage: w <filename> <length> <data> [-h, hex]\n");
+        PrtNo("Usage: w <filename> <length> <data> [-h, hex]");
         return 0;
     }
     uint inum = findinum(argv[1]);
     if (inum == NINODES) {
-        printf("Not found!\n");
+        PrtNo("Not found!");
         return 0;
     }
     struct inode *ip = iget(inum);
-    if (!ip) return 0;
+    CheckIP(0);
     if (ip->type != T_FILE) {
-        printf("Not a file\n");
+        PrtNo("Not a file");
         free(ip);
         return 0;
     }
@@ -742,8 +745,7 @@ int cmd_w(int argc, char *argv[]) {
     int h = argc >= 5 && strcmp(argv[4], "-h") == 0;
     if (h) {
         if (strlen(data) != len * 2) {
-            printf("No\n");
-            Warn("Invalid data length");
+            PrtNo("Invalid data length");
             free(ip);
             return 0;
         }
@@ -752,8 +754,7 @@ int cmd_w(int argc, char *argv[]) {
             int a = hex2int(data[i * 2]);
             int b = hex2int(data[i * 2 + 1]);
             if (a < 0 || b < 0) {
-                printf("No\n");
-                Warn("Invalid data");
+                PrtNo("Invalid data");
                 free(buf);
                 free(ip);
                 return 0;
@@ -776,20 +777,20 @@ int cmd_w(int argc, char *argv[]) {
     return 0;
 }
 int cmd_i(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 4) {
-        printf("Usage: i <filename> <pos> <length> <data> [-h, hex]\n");
+        PrtNo("Usage: i <filename> <pos> <length> <data> [-h, hex]");
         return 0;
     }
     uint inum = findinum(argv[1]);
     if (inum == NINODES) {
-        printf("Not found!\n");
+        PrtNo("Not found!");
         return 0;
     }
     struct inode *ip = iget(inum);
-    if (!ip) return 0;
+    CheckIP(0);
     if (ip->type != T_FILE) {
-        printf("Not a file\n");
+        PrtNo("Not a file");
         free(ip);
         return 0;
     }
@@ -799,8 +800,7 @@ int cmd_i(int argc, char *argv[]) {
     int h = argc >= 6 && strcmp(argv[5], "-h") == 0;
     if (h) {
         if (strlen(data) != len * 2) {
-            printf("No\n");
-            Warn("Invalid data length");
+            PrtNo("Invalid data length");
             free(ip);
             return 0;
         }
@@ -809,8 +809,7 @@ int cmd_i(int argc, char *argv[]) {
             int a = hex2int(data[i * 2]);
             int b = hex2int(data[i * 2 + 1]);
             if (a < 0 || b < 0) {
-                printf("No\n");
-                Warn("Invalid data");
+                PrtNo("Invalid data");
                 free(buf);
                 free(ip);
                 return 0;
@@ -836,20 +835,20 @@ int cmd_i(int argc, char *argv[]) {
     return 0;
 }
 int cmd_d(int argc, char *argv[]) {
-    if (checkformat()) return 0;
+    CheckFmt();
     if (argc <= 3) {
-        printf("Usage: d <filename> <pos> <length>\n");
+        PrtNo("Usage: d <filename> <pos> <length>");
         return 0;
     }
     uint inum = findinum(argv[1]);
     if (inum == NINODES) {
-        printf("Not found!\n");
+        PrtNo("Not found!");
         return 0;
     }
     struct inode *ip = iget(inum);
-    if (!ip) return 0;
+    CheckIP(0);
     if (ip->type != T_FILE) {
-        printf("Not a file\n");
+        PrtNo("Not a file");
         free(ip);
         return 0;
     }
@@ -913,8 +912,7 @@ int main(int argc, char *argv[]) {
         Log("use command: %s", buf);
         int ncmd = parse(buf, cmds);
         if (ncmd < 0) {
-            printf("Too many args!\n");
-            Warn("Too many args");
+            PrtNo("Too many args");
             continue;
         }
         if (ncmd == 0) continue;
@@ -925,8 +923,7 @@ int main(int argc, char *argv[]) {
                 break;
             }
         if (ret == 1) {
-            printf("No such command!\n");
-            Warn("No such command");
+            PrtNo("No such command");
         }
         if (ret < 0) break;
     }

@@ -1,6 +1,6 @@
 SRC = $(wildcard *.c)
 CC = gcc
-CFLAGS += -Wall -Werror -fsanitize=address -g
+CFLAGS += -Wall -Werror -fsanitize=address -g -DDEBUG
 
 all: fs
 
