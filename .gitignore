@@ -1,6 +1,8 @@
+.vscode
 *.log
 *.o
+*.out
+*.in
 disk
 fs
 diskfile
-.vscode

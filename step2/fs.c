@@ -64,10 +64,11 @@ struct inode {
 };
 
 static inline void prtinode(struct inode *ip) {
-    Debug("inode %u: type %u, mode %x, uid %u, nlink %u, mtime %u, size %u",
-        ip->inum, ip->type, ip->mode, ip->uid, ip->nlink, ip->mtime, ip->size);
+    Debug("inode %u: type %u, mode %x, uid %u, nlink %u, mtime %u, size %u, blocks %u",
+        ip->inum, ip->type, ip->mode, ip->uid, ip->nlink, ip->mtime, ip->size, ip->blocks);
 }
 
+// the longest file name is 11 bytes (the last byte is '\0')
 #define MAXNAME 12
 
 struct dirent {  // 16 bytes
@@ -85,6 +86,7 @@ struct superblock {
     uint bmapstart;   // Block number of first free map block
 } sb;
 
+// total number of inodes
 #define NINODES 1024
 
 // inodes per block
@@ -99,8 +101,10 @@ struct superblock {
 // addresses per block
 #define APB (BSIZE / sizeof(uint))
 
-#define IBLOCK(i, sb) ((i) / IPB + sb.inodestart)
-#define BBLOCK(b, sb) ((b) / BPB + sb.bmapstart)
+// block containing inode i
+#define IBLOCK(i) ((i) / IPB + sb.inodestart)
+// block of free map containing bit for block b
+#define BBLOCK(b) ((b) / BPB + sb.bmapstart)
 
 int fsize;
 int nblocks;
@@ -122,12 +126,12 @@ void bzro(uint bno) {
 uint balloc() {
     for (int i = 0; i < sb.size; i += BPB) {
         char buf[BSIZE];
-        bread(BBLOCK(i, sb), buf);
+        bread(BBLOCK(i), buf);
         for (int j = 0; j < BPB; j++) {
             int m = 1 << (j % 8);
             if ((buf[j / 8] & m) == 0) {
                 buf[j / 8] |= m;
-                bwrite(BBLOCK(i, sb), buf);
+                bwrite(BBLOCK(i), buf);
                 bzro(i + j);
                 return i + j;
             }
@@ -140,12 +144,12 @@ uint balloc() {
 // free a block
 void bfree(uint bno) {
     char buf[BSIZE];
-    bread(BBLOCK(bno, sb), buf);
+    bread(BBLOCK(bno), buf);
     int i = bno % BPB;
     int m = 1 << (i % 8);
     if ((buf[i / 8] & m) == 0) Warn("freeing free block");
     buf[i / 8] &= ~m;
-    bwrite(BBLOCK(bno, sb), buf);
+    bwrite(BBLOCK(bno), buf);
 }
 
 // get the inode with inum
@@ -157,7 +161,7 @@ struct inode *iget(uint inum) {
         return NULL;
     }
     char buf[BSIZE];
-    bread(IBLOCK(inum, sb), buf);
+    bread(IBLOCK(inum), buf);
     struct dinode *dip = (struct dinode *)buf + inum % IPB;
     if (dip->type == 0) {
         Warn("iget: no such inode");
@@ -184,12 +188,12 @@ struct inode *iget(uint inum) {
 struct inode *ialloc(short type) {
     char buf[BSIZE];
     for (int i = 0; i < sb.ninodes; i++) {
-        bread(IBLOCK(i, sb), buf);
+        bread(IBLOCK(i), buf);
         struct dinode *dip = (struct dinode *)buf + i % IPB;
         if (dip->type == 0) {
             memset(dip, 0, sizeof(struct dinode));
             dip->type = type;
-            bwrite(IBLOCK(i, sb), buf);
+            bwrite(IBLOCK(i), buf);
             struct inode *ip = calloc(1, sizeof(struct inode));
             ip->inum = i;
             ip->type = type;
@@ -205,7 +209,7 @@ struct inode *ialloc(short type) {
 // write the inode to disk
 void iupdate(struct inode *ip) {
     char buf[BSIZE];
-    bread(IBLOCK(ip->inum, sb), buf);
+    bread(IBLOCK(ip->inum), buf);
     struct dinode *dip = (struct dinode *)buf + ip->inum % IPB;
     dip->type = ip->type;
     dip->mode = ip->mode;
@@ -215,7 +219,7 @@ void iupdate(struct inode *ip) {
     dip->size = ip->size;
     dip->blocks = ip->blocks;
     memcpy(dip->addrs, ip->addrs, sizeof(ip->addrs));
-    bwrite(IBLOCK(ip->inum, sb), buf);
+    bwrite(IBLOCK(ip->inum), buf);
 }
 
 // free all data blocks of an inode, but not the inode itself
@@ -355,7 +359,7 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
 #define PrtYes() do { printf("Yes\n"); Log("Success"); } while (0)
 #define PrtNo(x) do { printf("No\n"); Error(x); } while (0)
 #define CheckIP(x) do { if (!ip) { printf("No\n"); Error("ip is NULL"); return x; } } while (0)
-#define CheckFmt() do { if (sb.magic != MAGIC) { PrtNo("Not formatted"); } } while (0)
+#define CheckFmt() do { if (sb.magic != MAGIC) { PrtNo("Not formatted"); return 0; } } while (0)
 
 #define UID 666
 #define ROOTINO 0
@@ -446,7 +450,7 @@ int cmd_f(int argc, char *argv[]) {
         memset(buf, 0, BSIZE);
         for (int j = 0; j < BPB; j++)
             if (i + j < nmeta) buf[j / 8] |= 1 << (j % 8);
-        bwrite(BBLOCK(i, sb), buf);
+        bwrite(BBLOCK(i), buf);
     }
 
     // make root dir
@@ -456,8 +460,7 @@ int cmd_f(int argc, char *argv[]) {
 
 uint pwdinum = 0;
 
-// check if name is valid
-int validname(char *name) {
+int is_name_valid(char *name) {
     int len = strlen(name);
     if (len >= MAXNAME) return 0;
     if (name[0] == '.') return 0;
@@ -524,7 +527,7 @@ int cmd_mk(int argc, char *argv[]) {
         PrtNo("Usage: mk <filename>");
         return 0;
     }
-    if (!validname(argv[1])) {
+    if (!is_name_valid(argv[1])) {
         PrtNo("Invalid name!");
         return 0;
     }
@@ -541,7 +544,7 @@ int cmd_mkdir(int argc, char *argv[]) {
         PrtNo("Usage: mkdir <dirname>");
         return 0;
     }
-    if (!validname(argv[1])) {
+    if (!is_name_valid(argv[1])) {
         PrtNo("Invalid name!");
         return 0;
     }
@@ -655,6 +658,8 @@ int cmd_rmdir(int argc, char *argv[]) {
 
 // do not check if pwd is valid
 // now no arg
+// TODO: ls order
+// TODO: ls -alh
 int cmd_ls(int argc, char *argv[]) {
     CheckFmt();
     struct inode *ip = iget(pwdinum);
@@ -669,11 +674,12 @@ int cmd_ls(int argc, char *argv[]) {
     for (int i = 0; i < nfile; i++) {
         if (de[i].inum == NINODES) continue;  // deleted
         struct inode *sub = iget(de[i].inum);
-        Log("Entry %d: name=%s", de[i].inum, de[i].name);
         time_t mtime = sub->mtime;
         struct tm *tmptr = localtime(&mtime);
         strftime(str, sizeof(str), "%Y-%m-%d %H:%M:%S", tmptr);
         printf("%s\t%s\t%s\t%d bytes\n", sub->type == T_DIR ? "d" : "f",
+               de[i].name, str, sub->size);
+        Log("%s\t%s\t%s\t%d bytes\n", sub->type == T_DIR ? "d" : "f",
                de[i].name, str, sub->size);
         free(sub);
     }
