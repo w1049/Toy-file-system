@@ -23,39 +23,62 @@ int ncyl, nsec, ttd;
 unsigned char *diskfile;
 int cur_cyl;
 
+#define PrtYes()         \
+    do {                 \
+        printf("Yes\n"); \
+        Log("Success");  \
+    } while (0)
+#define PrtNo(x)        \
+    do {                \
+        printf("No\n"); \
+        Error(x);       \
+    } while (0)
+#define Parse(maxargs)       \
+    char *argv[maxargs + 1]; \
+    int argc = parse(args, argv, maxargs);
+
 #define MAXARGS 5
-// parse a line into commands
-int parse(char *line, char *cmds[]) {
+// parse a line into args
+// the most number of args is lim
+// so argc <= lim
+// args exceeding lim will be put into argv[argc]
+// for example, parse "a b c d e f", 3
+// result: argc=3, argv=["a", "b", "c", "d e f"]
+int parse(char *line, char *argv[], int lim) {
     char *p;
-    int ncmd = 0;
+    int argc = 0;
     p = strtok(line, " ");
     while (p) {
-        cmds[ncmd++] = p;
-        if (ncmd >= MAXARGS) return -1;
+        argv[argc++] = p;
+        if (argc >= lim) break;
         p = strtok(NULL, " ");
     }
-    cmds[ncmd] = NULL;
-    return ncmd;
+    if (argc >= lim) {
+        argv[argc] = p + strlen(p) + 1;
+    } else {
+        argv[argc] = NULL;
+    }
+    return argc;
 }
 
 // return a negative value to exit
-int cmd_i(int argc, char *argv[]) {
+int cmd_i(char *args) {
     printf("%d %d\n", ncyl, nsec);
     Log("%d Cylinders, %d Sectors per cylinder", ncyl, nsec);
     return 0;
 }
-int cmd_r(int argc, char *argv[]) {
+int cmd_r(char *args) {
+    Parse(MAXARGS);
     static char buf[BLOCKSIZE * 2 + 1];
-    if (argc != 3) {
+    if (argc < 2) {
         printf("Usage: R <cylinder> <sector>\n");
         Warn("Invalid arguments");
         return 0;
     }
-    int cyl = atoi(argv[1]);
-    int sec = atoi(argv[2]);
+    int cyl = atoi(argv[0]);
+    int sec = atoi(argv[1]);
     if (cyl >= ncyl || sec >= nsec || cyl < 0 || sec < 0) {
-        printf("No\n");
-        Warn("Invalid cylinder or sector");
+        PrtNo("Invalid cylinder or sector");
         return 0;
     }
     unsigned char *p = diskfile + (cyl * nsec + sec) * BLOCKSIZE;
@@ -71,32 +94,30 @@ int cmd_r(int argc, char *argv[]) {
     Log("Delay %d ms, Read data: %s", tsleep, buf);
     return 0;
 }
-int cmd_w(int argc, char *argv[]) {
+int cmd_w(char *args) {
+    Parse(MAXARGS);
     static unsigned char buf[BLOCKSIZE];
-    if (argc != 4) {
+    if (argc < 3) {
         printf("Usage: W <cylinder> <sector> <data>\n");
         Warn("Invalid arguments");
         return 0;
     }
-    int cyl = atoi(argv[1]);
-    int sec = atoi(argv[2]);
-    char *data = argv[3];
+    int cyl = atoi(argv[0]);
+    int sec = atoi(argv[1]);
+    char *data = argv[2];
     if (cyl >= ncyl || sec >= nsec || cyl < 0 || sec < 0) {
-        printf("No\n");
-        Warn("Invalid cylinder or sector");
+        PrtNo("Invalid cylinder or sector");
         return 0;
     }
     if (strlen(data) != BLOCKSIZE * 2) {
-        printf("No\n");
-        Warn("Invalid data length");
+        PrtNo("Invalid data length");
         return 0;
     }
     for (int i = 0; i < BLOCKSIZE; i++) {
         int a = hex2int(data[i * 2]);
         int b = hex2int(data[i * 2 + 1]);
         if (a < 0 || b < 0) {
-            printf("No\n");
-            Warn("Invalid data");
+            PrtNo("Invalid data");
             return 0;
         }
         buf[i] = a * 16 + b;
@@ -110,7 +131,7 @@ int cmd_w(int argc, char *argv[]) {
     Log("Delay %d ms, Write successfully", tsleep);
     return 0;
 }
-int cmd_e(int argc, char *argv[]) {
+int cmd_e(char *args) {
     printf("Goodbye!\n");
     Log("Exit");
     return -1;
@@ -118,7 +139,7 @@ int cmd_e(int argc, char *argv[]) {
 
 static struct {
     const char *name;
-    int (*handler)(int, char **);
+    int (*handler)(char *);
 } cmd_table[] = {
     {"I", cmd_i},
     {"R", cmd_r},
@@ -157,29 +178,21 @@ int main(int argc, char *argv[]) {
 
     // command
     static char buf[1024];
-    static char *cmds[MAXARGS];
     int NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
     while (1) {
         fgets(buf, sizeof(buf), stdin);
         if (feof(stdin)) break;
         buf[strlen(buf) - 1] = 0;
         Log("use command: %s", buf);
-        int ncmd = parse(buf, cmds);
-        if (ncmd < 0) {
-            printf("Too many args!\n");
-            Warn("Too many args");
-            continue;
-        }
-        if (ncmd == 0) continue;
+        char *p = strtok(buf, " ");
         int ret = 1;
         for (int i = 0; i < NCMD; i++)
-            if (strcmp(cmds[0], cmd_table[i].name) == 0) {
-                ret = cmd_table[i].handler(ncmd, cmds);
+            if (strcmp(p, cmd_table[i].name) == 0) {
+                ret = cmd_table[i].handler(p + strlen(p) + 1);
                 break;
             }
         if (ret == 1) {
-            printf("No such command!\n");
-            Warn("No such command");
+            PrtNo("No such command");
         }
         if (ret < 0) break;
     }
