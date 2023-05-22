@@ -1,10 +1,7 @@
-#ifndef __LOG_H__
-#define __LOG_H__
-
 #include <err.h>
 #include <stdio.h>
 
-FILE *log_file;
+static FILE *log_file;
 
 static inline void log_init(const char *fname) {
     log_file = fopen(fname, "w");
@@ -31,4 +28,12 @@ static inline void log_close(void) { fclose(log_file); }
         fflush(log_file);                                         \
     } while (0)
 
+#ifdef DEBUG
+#define Debug(format, ...)                                        \
+    do {                                                          \
+        fprintf(log_file, "[DEBUG] " format "\n", ##__VA_ARGS__); \
+        fflush(log_file);                                         \
+    } while (0)
+#else
+#define Debug(format, ...)
 #endif

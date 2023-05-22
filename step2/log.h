@@ -1,10 +1,7 @@
-#ifndef __LOG_H__
-#define __LOG_H__
-
 #include <err.h>
 #include <stdio.h>
 
-extern FILE *log_file;
+static FILE *log_file;
 
 static inline void log_init(const char *fname) {
     log_file = fopen(fname, "w");
@@ -39,6 +36,4 @@ static inline void log_close(void) { fclose(log_file); }
     } while (0)
 #else
 #define Debug(format, ...)
-#endif
-
 #endif
