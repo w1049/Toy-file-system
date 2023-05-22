@@ -55,8 +55,11 @@ struct inode {
 };
 
 static inline void prtinode(struct inode *ip) {
-    Debug("inode %u: type %u, mode %x, uid %u, nlink %u, mtime %u, size %u, blocks %u",
-        ip->inum, ip->type, ip->mode, ip->uid, ip->nlink, ip->mtime, ip->size, ip->blocks);
+    Debug(
+        "inode %u: type %u, mode %x, uid %u, nlink %u, mtime %u, size %u, "
+        "blocks %u",
+        ip->inum, ip->type, ip->mode, ip->uid, ip->nlink, ip->mtime, ip->size,
+        ip->blocks);
 }
 
 // the longest file name is 11 bytes (the last byte is '\0')
@@ -347,22 +350,43 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
 
 #define MAGIC 0x5346594d
 
-#define PrtYes() do { printf("Yes\n"); Log("Success"); } while (0)
-#define PrtNo(x) do { printf("No\n"); Error(x); } while (0)
-#define CheckIP(x) do { if (!ip) { printf("No\n"); Error("ip is NULL"); return x; } } while (0)
-#define CheckFmt() do { if (sb.magic != MAGIC) { PrtNo("Not formatted"); return 0; } } while (0)
-#define Parse(maxargs) \
-    char *argv[maxargs+1]; \
+#define PrtYes()         \
+    do {                 \
+        printf("Yes\n"); \
+        Log("Success");  \
+    } while (0)
+#define PrtNo(x)        \
+    do {                \
+        printf("No\n"); \
+        Error(x);       \
+    } while (0)
+#define CheckIP(x)               \
+    do {                         \
+        if (!ip) {               \
+            printf("No\n");      \
+            Error("ip is NULL"); \
+            return x;            \
+        }                        \
+    } while (0)
+#define CheckFmt()                  \
+    do {                            \
+        if (sb.magic != MAGIC) {    \
+            PrtNo("Not formatted"); \
+            return 0;               \
+        }                           \
+    } while (0)
+#define Parse(maxargs)       \
+    char *argv[maxargs + 1]; \
     int argc = parse(args, argv, maxargs);
-    // for (int i = 0; i < argc; i++) Debug("argv[%d] = %s", i, argv[i]);
-    // if (maxargs != MAXARGS) Debug("argv[argc] = %s", argv[argc]);
+// for (int i = 0; i < argc; i++) Debug("argv[%d] = %s", i, argv[i]);
+// if (maxargs != MAXARGS) Debug("argv[argc] = %s", argv[argc]);
 
 #define UID 666
 #define ROOTINO 0
 
 // create a file in parent pinum
 // will not check name
-// return 0 for success 
+// return 0 for success
 int icreate(short type, char *name, uint pinum) {
     struct inode *ip = ialloc(type);
     CheckIP(1);
@@ -382,11 +406,12 @@ int icreate(short type, char *name, uint pinum) {
         writei(ip, (char *)&des, ip->size, sizeof(des));
     } else
         iupdate(ip);
-    Log("Create %s inode %d, inside directory inode %d", type == T_DIR ? "dir" : "file", ip->inum, pinum);
+    Log("Create %s inode %d, inside directory inode %d",
+        type == T_DIR ? "dir" : "file", ip->inum, pinum);
     prtinode(ip);
     free(ip);
     if (pinum != inum) {  // root will not enter here
-    // for normal files, add it to the parent directory
+                          // for normal files, add it to the parent directory
         ip = iget(pinum);
         struct dirent de;
         de.inum = inum;
@@ -420,7 +445,6 @@ int parse(char *line, char *argv[], int lim) {
     }
     return argc;
 }
-
 
 // return a negative value to exit
 int cmd_f(char *args) {
@@ -678,8 +702,10 @@ int cmp_ls(const void *a, const void *b) {
     struct entry *da = (struct entry *)a;
     struct entry *db = (struct entry *)b;
     if (da->type != db->type) {
-        if (da->type == T_DIR) return -1; // dir first
-        else return 1;
+        if (da->type == T_DIR)
+            return -1;  // dir first
+        else
+            return 1;
     }
     // same type, compare name
     return strcmp(da->name, db->name);
@@ -720,7 +746,8 @@ int cmd_ls(char *args) {
         printf("%s\t", d ? "d" : "f");
         printf("%s\t%d\t", str, entries[i].size);
         printf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
-        Log("%s\t%s\t%s\t%dB", d ? "d" : "f", entries[i].name, str, entries[i].size);
+        Log("%s\t%s\t%s\t%dB", d ? "d" : "f", entries[i].name, str,
+            entries[i].size);
     }
     free(entries);
     free(buf);
@@ -752,7 +779,7 @@ int cmd_cat(char *args) {
     readi(ip, buf, 0, ip->size);
     buf[ip->size] = 0;
     printf("%s\n", buf);
-    
+
     free(buf);
     free(ip);
     return 0;
@@ -794,8 +821,7 @@ int cmd_w(char *args) {
 }
 int cmd_i(char *args) {
     CheckFmt();
-    Parse(3)
-    if (argc < 3) {
+    Parse(3) if (argc < 3) {
         PrtNo("Usage: i <filename> <pos> <length> <data>");
         return 0;
     }
