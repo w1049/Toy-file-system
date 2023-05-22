@@ -656,10 +656,27 @@ int cmd_rmdir(int argc, char *argv[]) {
     return 0;
 }
 
+// for ls
+struct entry {
+    short type;
+    char name[MAXNAME];
+    uint mtime;
+    uint size;
+};
+
+int cmp_ls(const void *a, const void *b) {
+    struct entry *da = (struct entry *)a;
+    struct entry *db = (struct entry *)b;
+    if (da->type != db->type) {
+        if (da->type == T_DIR) return -1; // dir first
+        else return 1;
+    }
+    // same type, compare name
+    return strcmp(da->name, db->name);
+}
+
 // do not check if pwd is valid
 // now no arg
-// TODO: ls order
-// TODO: ls -alh
 int cmd_ls(int argc, char *argv[]) {
     CheckFmt();
     struct inode *ip = iget(pwdinum);
@@ -669,20 +686,33 @@ int cmd_ls(int argc, char *argv[]) {
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
-    int nfile = ip->size / sizeof(struct dirent);
-    char str[100];  // for time
+    int nfile = ip->size / sizeof(struct dirent), n = 0;
+    struct entry *entries = malloc(nfile * sizeof(struct entry));
     for (int i = 0; i < nfile; i++) {
         if (de[i].inum == NINODES) continue;  // deleted
+        if (strcmp(de[i].name, ".") == 0 || strcmp(de[i].name, "..") == 0)
+            continue;
         struct inode *sub = iget(de[i].inum);
-        time_t mtime = sub->mtime;
-        struct tm *tmptr = localtime(&mtime);
-        strftime(str, sizeof(str), "%Y-%m-%d %H:%M:%S", tmptr);
-        printf("%s\t%s\t%s\t%d bytes\n", sub->type == T_DIR ? "d" : "f",
-               de[i].name, str, sub->size);
-        Log("%s\t%s\t%s\t%d bytes\n", sub->type == T_DIR ? "d" : "f",
-               de[i].name, str, sub->size);
+        entries[n].type = sub->type;
+        strcpy(entries[n].name, de[i].name);
+        entries[n].mtime = sub->mtime;
+        entries[n++].size = sub->size;
         free(sub);
     }
+    qsort(entries, n, sizeof(struct entry), cmp_ls);
+    char str[100];  // for time
+    printf("\33[1mType\tUpdate time\tSize\tName\033[0m\n");
+    for (int i = 0; i < n; i++) {
+        time_t mtime = entries[i].mtime;
+        struct tm *tmptr = localtime(&mtime);
+        strftime(str, sizeof(str), "%m-%d %H:%M", tmptr);
+        int d = entries[i].type == T_DIR;
+        printf("%s\t", d ? "d" : "f");
+        printf("%s\t%d\t", str, entries[i].size);
+        printf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
+        Log("%s\t%s\t%s\t%dB", d ? "d" : "f", entries[i].name, str, entries[i].size);
+    }
+    free(entries);
     free(buf);
     free(ip);
 
