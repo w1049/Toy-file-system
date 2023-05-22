@@ -12,15 +12,6 @@
 #include "bio.h"
 #include "log.h"
 
-// hex and dec
-static inline int hex2int(char ch) {
-    if (ch >= '0' && ch <= '9') return ch - '0';
-    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
-    return -1;
-}
-static char hex[] = "0123456789abcdef";
-
 typedef unsigned int uint;
 
 static inline uint min(uint a, uint b) { return a < b ? a : b; }
@@ -360,6 +351,11 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
 #define PrtNo(x) do { printf("No\n"); Error(x); } while (0)
 #define CheckIP(x) do { if (!ip) { printf("No\n"); Error("ip is NULL"); return x; } } while (0)
 #define CheckFmt() do { if (sb.magic != MAGIC) { PrtNo("Not formatted"); return 0; } } while (0)
+#define Parse(maxargs) \
+    char *argv[maxargs+1]; \
+    int argc = parse(args, argv, maxargs);
+    // for (int i = 0; i < argc; i++) Debug("argv[%d] = %s", i, argv[i]);
+    // if (maxargs != MAXARGS) Debug("argv[argc] = %s", argv[argc]);
 
 #define UID 666
 #define ROOTINO 0
@@ -402,23 +398,32 @@ int icreate(short type, char *name, uint pinum) {
 }
 
 #define MAXARGS 6
-// parse a line into commands
-int parse(char *line, char *cmds[]) {
+// parse a line into args
+// the most number of args is lim
+// so argc <= lim
+// args exceeding lim will be put into argv[argc]
+// for example, parse "a b c d e f", 3
+// result: argc=3, argv=["a", "b", "c", "d e f"]
+int parse(char *line, char *argv[], int lim) {
     char *p;
-    int ncmd = 0;
+    int argc = 0;
     p = strtok(line, " ");
     while (p) {
-        cmds[ncmd++] = p;
-        if (ncmd > MAXARGS) return -1;
+        argv[argc++] = p;
+        if (argc >= lim) break;
         p = strtok(NULL, " ");
     }
-    cmds[ncmd] = NULL;
-    return ncmd;
+    if (argc >= lim) {
+        argv[argc] = p + strlen(p) + 1;
+    } else {
+        argv[argc] = NULL;
+    }
+    return argc;
 }
 
 
 // return a negative value to exit
-int cmd_f(int argc, char *argv[]) {
+int cmd_f(char *args) {
     char buf[BSIZE];
 
     // calculate args and write superblock
@@ -521,47 +526,50 @@ int delinum(uint inum) {
     return 0;
 }
 
-int cmd_mk(int argc, char *argv[]) {
+int cmd_mk(char *args) {
     CheckFmt();
-    if (argc <= 1) {
+    Parse(MAXARGS);
+    if (argc < 1) {
         PrtNo("Usage: mk <filename>");
         return 0;
     }
-    if (!is_name_valid(argv[1])) {
+    if (!is_name_valid(argv[0])) {
         PrtNo("Invalid name!");
         return 0;
     }
-    if (findinum(argv[1]) != NINODES) {
+    if (findinum(argv[0]) != NINODES) {
         PrtNo("Already exists!");
         return 0;
     }
-    if (!icreate(T_FILE, argv[1], pwdinum)) PrtYes();
+    if (!icreate(T_FILE, argv[0], pwdinum)) PrtYes();
     return 0;
 }
-int cmd_mkdir(int argc, char *argv[]) {
+int cmd_mkdir(char *args) {
     CheckFmt();
-    if (argc <= 1) {
+    Parse(MAXARGS);
+    if (argc < 1) {
         PrtNo("Usage: mkdir <dirname>");
         return 0;
     }
-    if (!is_name_valid(argv[1])) {
+    if (!is_name_valid(argv[0])) {
         PrtNo("Invalid name!");
         return 0;
     }
-    if (findinum(argv[1]) != NINODES) {
+    if (findinum(argv[0]) != NINODES) {
         PrtNo("Already exists!");
         return 0;
     }
-    if (!icreate(T_DIR, argv[1], pwdinum)) PrtYes();
+    if (!icreate(T_DIR, argv[0], pwdinum)) PrtYes();
     return 0;
 }
-int cmd_rm(int argc, char *argv[]) {
+int cmd_rm(char *args) {
     CheckFmt();
-    if (argc <= 1) {
+    Parse(MAXARGS);
+    if (argc < 1) {
         PrtNo("Usage: rm <filename>");
         return 0;
     }
-    uint inum = findinum(argv[1]);
+    uint inum = findinum(argv[0]);
     if (inum == NINODES) {
         PrtNo("Not found!");
         return 0;
@@ -584,13 +592,14 @@ int cmd_rm(int argc, char *argv[]) {
     PrtYes();
     return 0;
 }
-int cmd_cd(int argc, char *argv[]) {
+int cmd_cd(char *args) {
     CheckFmt();
-    if (argc <= 1) {
+    Parse(MAXARGS);
+    if (argc < 1) {
         PrtNo("Usage: cd <dirname>");
         return 0;
     }
-    uint inum = findinum(argv[1]);
+    uint inum = findinum(argv[0]);
     if (inum == NINODES) {
         PrtNo("Not found!");
         return 0;
@@ -607,13 +616,14 @@ int cmd_cd(int argc, char *argv[]) {
     PrtYes();
     return 0;
 }
-int cmd_rmdir(int argc, char *argv[]) {
+int cmd_rmdir(char *args) {
     CheckFmt();
-    if (argc <= 1) {
+    Parse(MAXARGS);
+    if (argc < 1) {
         PrtNo("Usage: rmdir <dirname>");
         return 0;
     }
-    uint inum = findinum(argv[1]);
+    uint inum = findinum(argv[0]);
     if (inum == NINODES) {
         PrtNo("Not found!");
         return 0;
@@ -677,7 +687,7 @@ int cmp_ls(const void *a, const void *b) {
 
 // do not check if pwd is valid
 // now no arg
-int cmd_ls(int argc, char *argv[]) {
+int cmd_ls(char *args) {
     CheckFmt();
     struct inode *ip = iget(pwdinum);
     CheckIP(0);
@@ -718,13 +728,14 @@ int cmd_ls(int argc, char *argv[]) {
 
     return 0;
 }
-int cmd_cat(int argc, char *argv[]) {
+int cmd_cat(char *args) {
     CheckFmt();
-    if (argc <= 1) {
-        PrtNo("Usage: cat <filename> [-h, hex]");
+    Parse(MAXARGS);
+    if (argc < 1) {
+        PrtNo("Usage: cat <filename>");
         return 0;
     }
-    uint inum = findinum(argv[1]);
+    uint inum = findinum(argv[0]);
     if (inum == NINODES) {
         PrtNo("Not found!");
         return 0;
@@ -739,31 +750,21 @@ int cmd_cat(int argc, char *argv[]) {
 
     char *buf = malloc(ip->size + 1);
     readi(ip, buf, 0, ip->size);
-    if (argc >= 3 && strcmp(argv[2], "-h") == 0) {
-        char *str = malloc(ip->size * 2 + 1);
-        for (int i = 0; i < ip->size; i++) {
-            str[i * 2] = hex[buf[i] / 16];
-            str[i * 2 + 1] = hex[buf[i] % 16];
-        }
-        str[ip->size * 2] = '\0';
-        printf("%s\n", str);
-        free(str);
-    } else {
-        buf[ip->size] = 0;
-        printf("%s\n", buf);
-    }
+    buf[ip->size] = 0;
+    printf("%s\n", buf);
     
     free(buf);
     free(ip);
     return 0;
 }
-int cmd_w(int argc, char *argv[]) {
+int cmd_w(char *args) {
     CheckFmt();
-    if (argc <= 3) {
-        PrtNo("Usage: w <filename> <length> <data> [-h, hex]");
+    Parse(2);
+    if (argc < 2) {
+        PrtNo("Usage: w <filename> <length> <data>");
         return 0;
     }
-    uint inum = findinum(argv[1]);
+    uint inum = findinum(argv[0]);
     if (inum == NINODES) {
         PrtNo("Not found!");
         return 0;
@@ -776,29 +777,8 @@ int cmd_w(int argc, char *argv[]) {
         return 0;
     }
 
-    uint len = atoi(argv[2]);
-    char *data = argv[3];
-    int h = argc >= 5 && strcmp(argv[4], "-h") == 0;
-    if (h) {
-        if (strlen(data) != len * 2) {
-            PrtNo("Invalid data length");
-            free(ip);
-            return 0;
-        }
-        char *buf = malloc(len);
-        for (int i = 0; i < len; i++) {
-            int a = hex2int(data[i * 2]);
-            int b = hex2int(data[i * 2 + 1]);
-            if (a < 0 || b < 0) {
-                PrtNo("Invalid data");
-                free(buf);
-                free(ip);
-                return 0;
-            }
-            buf[i] = a * 16 + b;
-        }
-        data = buf;
-    }
+    uint len = atoi(argv[1]);
+    char *data = argv[2];
 
     writei(ip, data, 0, len);
 
@@ -808,17 +788,18 @@ int cmd_w(int argc, char *argv[]) {
         iupdate(ip);
     }
 
-    if (h) free(data);
     free(ip);
+    PrtYes();
     return 0;
 }
-int cmd_i(int argc, char *argv[]) {
+int cmd_i(char *args) {
     CheckFmt();
-    if (argc <= 4) {
-        PrtNo("Usage: i <filename> <pos> <length> <data> [-h, hex]");
+    Parse(3)
+    if (argc < 3) {
+        PrtNo("Usage: i <filename> <pos> <length> <data>");
         return 0;
     }
-    uint inum = findinum(argv[1]);
+    uint inum = findinum(argv[0]);
     if (inum == NINODES) {
         PrtNo("Not found!");
         return 0;
@@ -830,30 +811,9 @@ int cmd_i(int argc, char *argv[]) {
         free(ip);
         return 0;
     }
-    uint pos = atoi(argv[2]);
-    uint len = atoi(argv[3]);
-    char *data = argv[4];
-    int h = argc >= 6 && strcmp(argv[5], "-h") == 0;
-    if (h) {
-        if (strlen(data) != len * 2) {
-            PrtNo("Invalid data length");
-            free(ip);
-            return 0;
-        }
-        char *buf = malloc(len);
-        for (int i = 0; i < len; i++) {
-            int a = hex2int(data[i * 2]);
-            int b = hex2int(data[i * 2 + 1]);
-            if (a < 0 || b < 0) {
-                PrtNo("Invalid data");
-                free(buf);
-                free(ip);
-                return 0;
-            }
-            buf[i] = a * 16 + b;
-        }
-        data = buf;
-    }
+    uint pos = atoi(argv[1]);
+    uint len = atoi(argv[2]);
+    char *data = argv[3];
 
     if (pos >= ip->size) {
         pos = ip->size;
@@ -866,17 +826,18 @@ int cmd_i(int argc, char *argv[]) {
         writei(ip, buf, pos + len, ip->size - pos);
     }
 
-    if (h) free(data);
     free(ip);
+    PrtYes();
     return 0;
 }
-int cmd_d(int argc, char *argv[]) {
+int cmd_d(char *args) {
     CheckFmt();
-    if (argc <= 3) {
+    Parse(MAXARGS);
+    if (argc < 3) {
         PrtNo("Usage: d <filename> <pos> <length>");
         return 0;
     }
-    uint inum = findinum(argv[1]);
+    uint inum = findinum(argv[0]);
     if (inum == NINODES) {
         PrtNo("Not found!");
         return 0;
@@ -888,8 +849,8 @@ int cmd_d(int argc, char *argv[]) {
         free(ip);
         return 0;
     }
-    uint pos = atoi(argv[2]);
-    uint len = atoi(argv[3]);
+    uint pos = atoi(argv[1]);
+    uint len = atoi(argv[2]);
 
     if (pos + len >= ip->size) {
         ip->size = pos;
@@ -905,9 +866,10 @@ int cmd_d(int argc, char *argv[]) {
     }
 
     free(ip);
+    PrtYes();
     return 0;
 }
-int cmd_e(int argc, char *argv[]) {
+int cmd_e(char *args) {
     printf("Goodbye!\n");
     Log("Exit");
     return -1;
@@ -915,7 +877,7 @@ int cmd_e(int argc, char *argv[]) {
 
 static struct {
     const char *name;
-    int (*handler)(int, char **);
+    int (*handler)(char *);
 } cmd_table[] = {
     {"f", cmd_f},   {"mk", cmd_mk},   {"mkdir", cmd_mkdir},
     {"rm", cmd_rm}, {"cd", cmd_cd},   {"rmdir", cmd_rmdir},
@@ -939,23 +901,17 @@ int main(int argc, char *argv[]) {
 
     // command
     static char buf[1024];
-    static char *cmds[MAXARGS + 1];  // +1 for NULL
     int NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
     while (1) {
         fgets(buf, sizeof(buf), stdin);
         if (feof(stdin)) break;
         buf[strlen(buf) - 1] = 0;
         Log("use command: %s", buf);
-        int ncmd = parse(buf, cmds);
-        if (ncmd < 0) {
-            PrtNo("Too many args");
-            continue;
-        }
-        if (ncmd == 0) continue;
+        char *p = strtok(buf, " ");
         int ret = 1;
         for (int i = 0; i < NCMD; i++)
-            if (strcmp(cmds[0], cmd_table[i].name) == 0) {
-                ret = cmd_table[i].handler(ncmd, cmds);
+            if (strcmp(p, cmd_table[i].name) == 0) {
+                ret = cmd_table[i].handler(p + strlen(p) + 1);
                 break;
             }
         if (ret == 1) {
