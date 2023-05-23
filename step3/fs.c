@@ -811,9 +811,9 @@ int cmd_ls(char *args) {
         strftime(str, sizeof(str), "%m-%d %H:%M", tmptr);
         short d = entries[i].type == T_DIR;
         short m = (d  << 4) | entries[i].mode;
-        static char a[] = "drwrw", b[] = "f----";
+        static char a[] = "drwrw";
         for (int j = 0; j <= 4; j++)
-            msgprintf("%c", m & (1 << (4-j)) ? a[j] : b[j]);
+            msgprintf("%c", m & (1 << (4-j)) ? a[j] : '-');
         msgprintf("\t%u\t%s\t%d\t", entries[i].uid, str, entries[i].size);
         msgprintf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
         Log("%u", m);
