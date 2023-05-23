@@ -224,7 +224,7 @@ void iupdate(struct inode *ip) {
     dip->mode = ip->mode;
     dip->uid = ip->uid;
     dip->nlink = ip->nlink;
-    dip->mtime = ip->mtime;
+    dip->mtime = ip->mtime = time(NULL);
     dip->size = ip->size;
     dip->blocks = ip->blocks;
     memcpy(dip->addrs, ip->addrs, sizeof(ip->addrs));
@@ -358,8 +358,9 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
         ip->size = off;
         ip->blocks =
             max(1 + (off - 1) / BSIZE, ip->blocks);  // blocks may change
-        iupdate(ip);
     }
+    ip->mtime = time(NULL);
+    iupdate(ip);
     return n;
 }
 
@@ -412,16 +413,41 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
 
 #define ROOTINO 0
 
+enum {
+    R = 0b10,
+    W = 0b01 
+};
+
+static inline int checkPerm(uint inum, short perm) {
+    struct inode *ip = iget(inum);
+    CheckIP(0);
+    int ret = 0;
+    if (ip->uid == user->uid) ret = 1;
+    else {
+        if ((ip->mode & perm) == perm) ret = 1;
+        else ret = 0;
+    }
+    free(ip);
+    return ret;
+}
+
+#define CheckPerm(inum, perm) \
+    do {             \
+        if (!checkPerm(inum, perm)) { \
+            PrtNo("Permission denied"); \
+            return 0; \
+        } \
+    } while (0)
+
 // create a file in parent pinum
 // will not check name
 // return 0 for success
-int icreate(short type, char *name, uint pinum) {
+int icreate(short type, char *name, uint pinum, unsigned short uid, unsigned short perm) {
     struct inode *ip = ialloc(type);
     CheckIP(1);
-    ip->mode = 0b1111;
-    ip->uid = user->uid;
+    ip->mode = perm;
+    ip->uid = uid;
     ip->nlink = 1;
-    ip->mtime = time(NULL);
     ip->size = 0;
     ip->blocks = 0;
     uint inum = ip->inum;
@@ -512,7 +538,7 @@ int cmd_f(char *args) {
     }
 
     // make root dir
-    if (!icreate(T_DIR, NULL, 0)) PrtYes();
+    if (!icreate(T_DIR, NULL, 0, 0, 0b1111)) PrtYes();
     return 0;
 }
 
@@ -592,7 +618,9 @@ int cmd_mk(char *args) {
         PrtNo("Already exists!");
         return 0;
     }
-    if (!icreate(T_FILE, argv[0], user->pwd)) PrtYes();
+    CheckPerm(user->pwd, R|W);
+    short mode = argc >= 2 ? (atoi(argv[1]) & 0b1111) : 0b1110;
+    if (!icreate(T_FILE, argv[0], user->pwd, user->uid, mode)) PrtYes();
     return 0;
 }
 int cmd_mkdir(char *args) {
@@ -610,7 +638,9 @@ int cmd_mkdir(char *args) {
         PrtNo("Already exists!");
         return 0;
     }
-    if (!icreate(T_DIR, argv[0], user->pwd)) PrtYes();
+    CheckPerm(user->pwd, R|W);
+    short mode = argc >= 2 ? (atoi(argv[1]) & 0b1111) : 0b1110;
+    if (!icreate(T_DIR, argv[0], user->pwd, user->uid, mode)) PrtYes();
     return 0;
 }
 int cmd_rm(char *args) {
@@ -625,6 +655,8 @@ int cmd_rm(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, W);
+    CheckPerm(user->pwd, R|W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -655,6 +687,7 @@ int cmd_cd(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, R);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_DIR) {
@@ -679,6 +712,8 @@ int cmd_rmdir(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, R|W);
+    CheckPerm(user->pwd, R|W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_DIR) {
@@ -721,6 +756,7 @@ int cmd_rmdir(char *args) {
 struct entry {
     short type;
     short uid;
+    short mode;
     char name[MAXNAME];
     uint mtime;
     uint size;
@@ -743,6 +779,7 @@ int cmp_ls(const void *a, const void *b) {
 // now no arg
 int cmd_ls(char *args) {
     CheckFmt();
+    CheckPerm(user->pwd, R);
     struct inode *ip = iget(user->pwd);
     CheckIP(0);
 
@@ -761,22 +798,25 @@ int cmd_ls(char *args) {
         strcpy(entries[n].name, de[i].name);
         entries[n].mtime = sub->mtime;
         entries[n].uid = sub->uid;
+        entries[n].mode = sub->mode;
         entries[n++].size = sub->size;
         free(sub);
     }
     qsort(entries, n, sizeof(struct entry), cmp_ls);
     char str[100];  // for time
-    msgprintf("\33[1mType\tOwner\tUpdate time\tSize\tName\033[0m\n");
+    msgprintf("\33[1mType \tOwner\tUpdate time\tSize\tName\033[0m\n");
     for (int i = 0; i < n; i++) {
         time_t mtime = entries[i].mtime;
         struct tm *tmptr = localtime(&mtime);
         strftime(str, sizeof(str), "%m-%d %H:%M", tmptr);
-        int d = entries[i].type == T_DIR;
-        msgprintf("%s\t%u\t", d ? "d" : "f", entries[i].uid);
-        msgprintf("%s\t%d\t", str, entries[i].size);
+        short d = entries[i].type == T_DIR;
+        short m = (d  << 4) | entries[i].mode;
+        static char a[] = "drwrw", b[] = "f----";
+        for (int j = 0; j <= 4; j++)
+            msgprintf("%c", m & (1 << (4-j)) ? a[j] : b[j]);
+        msgprintf("\t%u\t%s\t%d\t", entries[i].uid, str, entries[i].size);
         msgprintf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
-        Log("%s\t%u\t%s\t%s\t%dB", d ? "d" : "f", entries[i].uid,
-            entries[i].name, str, entries[i].size);
+        Log("%u", m);
     }
     free(entries);
     free(buf);
@@ -796,6 +836,7 @@ int cmd_cat(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, R);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -825,6 +866,7 @@ int cmd_w(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -859,6 +901,7 @@ int cmd_i(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -897,6 +940,7 @@ int cmd_d(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {

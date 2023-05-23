@@ -29,6 +29,7 @@ typedef struct {               // Represents a pool of connected descriptors
     int maxi;                  // High water index into client array
     int clientfd[FD_SETSIZE];  // Set of active descriptors
     struct clientitem *client[FD_SETSIZE];
+    int exit;
 } pool;
 
 void init_pool(int listenfd, pool *p) {
@@ -71,6 +72,7 @@ void check_clients(pool *p) {
             p->nready--;
             int exit = 1;
             if ((n = recv(connfd, buf, BUFSIZE, 0)) != 0) {
+                buf[n] = 0;
                 printf("Server received %d bytes on fd %d\n", n, connfd);
                 exit = 0;
                 if (serve(connfd, buf, n, p->client[i]) < 0) exit = 1;
