@@ -364,6 +364,21 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
     return n;
 }
 
+// test if ip->blocks is too larger than size
+// recycle blocks
+// use after shrink ip->size, such as truct
+int itest(struct inode *ip) {
+    int true_blocks = 1 + (ip->size - 1) / BSIZE;
+    if (true_blocks <= ip->blocks / 2) {
+        Log("Block usage: %d/%d, recycle", true_blocks, ip->blocks);
+        for (int i = ip->blocks - 1; i > true_blocks; i--)
+            bfree(bmap(ip, i));
+        ip->blocks = true_blocks;
+        iupdate(ip);
+    }
+    return 0;
+}
+
 #define MAGIC 0x5346594d
 
 #define PrtYes()            \
@@ -405,10 +420,17 @@ int writei(struct inode *ip, char *src, uint off, uint n) {
     int argc = parse(args, argv, maxargs);
 // for (int i = 0; i < argc; i++) Debug("argv[%d] = %s", i, argv[i]);
 // if (maxargs != MAXARGS) Debug("argv[argc] = %s", argv[argc]);
+
+int connfd;
 #define msginit() msgtmp = msg
 #define msgprintf(...)                            \
     do {                                          \
         msgtmp += sprintf(msgtmp, ##__VA_ARGS__); \
+    } while (0)
+#define msgflush() \
+    do { \
+        send(connfd, msg, msgtmp - msg, 0); \
+        msgtmp = msg; \
     } while (0)
 
 #define ROOTINO 0
@@ -589,15 +611,35 @@ int delinum(uint inum) {
     struct dirent *de = (struct dirent *)buf;
 
     int nfile = ip->size / sizeof(struct dirent);
+    int deleted = 1;
     for (int i = 0; i < nfile; i++) {
-        if (de[i].inum == NINODES) continue;  // deleted
+        if (de[i].inum == NINODES) {
+            ++deleted;
+            continue;  // deleted
+        }
         if (de[i].inum == inum) {
             de[i].inum = NINODES;
             writei(ip, (char *)&de[i], i * sizeof(struct dirent),
                    sizeof(struct dirent));
-            break;
         }
     }
+
+    if (deleted > nfile / 2) {
+        int newn = nfile - deleted, newsiz = newn * sizeof(struct dirent);
+        char *newbuf = malloc(newsiz);
+        struct dirent *newde = (struct dirent *)newbuf;
+        int j = 0;
+        for (int i = 0; i < nfile; i++) {
+            if (de[i].inum == NINODES) continue;  // deleted
+            memcpy(&newde[j++], &de[i], sizeof(struct dirent));
+        }
+        assert (j == newn);
+        ip->size = newsiz;
+        writei(ip, newbuf, 0, newsiz);
+        free(newbuf);
+        itest(ip); // try to shrink
+    }
+
     free(buf);
     free(ip);
     return 0;
@@ -816,7 +858,8 @@ int cmd_ls(char *args) {
             msgprintf("%c", m & (1 << (4-j)) ? a[j] : '-');
         msgprintf("\t%u\t%s\t%d\t", entries[i].uid, str, entries[i].size);
         msgprintf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
-        Log("%u", m);
+        if (i % 2 == 0) msgflush();
+        // TODO Log
     }
     free(entries);
     free(buf);
@@ -845,10 +888,11 @@ int cmd_cat(char *args) {
         return 0;
     }
 
-    char *buf = malloc(ip->size + 1);
+    char *buf = malloc(ip->size + 2);
     readi(ip, buf, 0, ip->size);
-    buf[ip->size] = 0;
-    msgprintf("%s\n", buf);
+    buf[ip->size] = '\n';
+    buf[ip->size + 1] = '\0';
+    send(connfd, buf, ip->size + 1, 0);
 
     free(buf);
     free(ip);
@@ -877,6 +921,11 @@ int cmd_w(char *args) {
 
     uint len = atoi(argv[1]);
     char *data = argv[2];
+    if (len > 512 || len > strlen(data)) {
+        PrtNo("Too long");
+        free(ip);
+        return 0;
+    }
 
     writei(ip, data, 0, len);
 
@@ -884,6 +933,7 @@ int cmd_w(char *args) {
         // if the new data is shorter, truncate
         ip->size = len;
         iupdate(ip);
+        itest(ip);
     }
 
     free(ip);
@@ -913,6 +963,11 @@ int cmd_i(char *args) {
     uint pos = atoi(argv[1]);
     uint len = atoi(argv[2]);
     char *data = argv[3];
+    if (len > 512 || len > strlen(data)) {
+        PrtNo("Too long");
+        free(ip);
+        return 0;
+    }
 
     if (pos >= ip->size) {
         pos = ip->size;
@@ -963,6 +1018,7 @@ int cmd_d(char *args) {
         writei(ip, buf, pos, copylen);
         ip->size -= len;
         iupdate(ip);
+        itest(ip); // try to shrink
     }
 
     free(ip);
@@ -1004,8 +1060,9 @@ int NCMD;
 
 int serve(int fd, char *buf, int len, struct clientitem *cli) {
     // command
-    buf[strlen(buf) - 1] = 0;
+    buf[strlen(buf) - 1] = 0; // TODO is this OK?
     user = cli;
+    connfd = fd;
     Log("uid=%u use command: %s", user->uid, buf);
     char *p = strtok(buf, " \r\n");
     int ret = 1;
