@@ -892,7 +892,8 @@ int cmd_w(char *args) {
 }
 int cmd_i(char *args) {
     CheckFmt();
-    Parse(3) if (argc < 3) {
+    Parse(3);
+    if (argc < 3) {
         PrtNo("Usage: i <filename> <pos> <length> <data>");
         return 0;
     }
