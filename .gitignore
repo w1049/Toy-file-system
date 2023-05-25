@@ -1,6 +1,7 @@
 .vscode
 *.log
 *.o
+*.d
 *.out
 *.in
 disk

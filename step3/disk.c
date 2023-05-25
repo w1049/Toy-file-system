@@ -153,7 +153,7 @@ struct clientitem *client_init(int connfd) { return NULL; }
 int NCMD;
 int serve(int fd, char *buf, int len, struct clientitem *cli) {
     Log("use command: %s", buf);
-    uchar *p = strtok(buf, " \r\n");
+    char *p = strtok(buf, " \r\n");
     int ret = 1;
     for (int i = 0; i < NCMD; i++)
         if (strcmp(p, cmd_table[i].name) == 0) {

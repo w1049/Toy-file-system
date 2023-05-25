@@ -1,13 +1,23 @@
 SRC = $(wildcard *.c)
 CC = gcc
-CFLAGS += -Wall -Werror
+CFLAGS += -Wall -Werror -fsanitize=address -g -DDEBUG
 
 all: disk
 
-disk: disk.c log.h
-	$(CC) $(CFLAGS) disk.c -o $@
+disk: disk.o
+	$(CC) $(CFLAGS) $^ -o $@
+
+include ${SRC:.c=.d}
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+%.d: %.c
+	@set -e; rm -f $@; \
+	$(CC) -M $(CFLAGS) $< > $@.$$$$; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
 
 clean:
-	rm -f disk
+	rm -f *.o *.d disk
 
 .PHONY: all clean
