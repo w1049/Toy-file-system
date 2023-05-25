@@ -60,6 +60,11 @@ void add_clients(int connfd, pool *p) {
 
 char msg[4096];
 char *msgtmp;
+#define msginit() msgtmp = msg
+#define msgprintf(...)                            \
+    do {                                          \
+        msgtmp += sprintf(msgtmp, ##__VA_ARGS__); \
+    } while (0)
 
 void check_clients(pool *p) {
     int i, connfd, n;

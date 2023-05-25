@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "log.h"
+#include "server.h"
 
 // hex and dec
 static inline int hex2int(char ch) {
@@ -25,12 +26,12 @@ int cur_cyl;
 
 #define PrtYes()         \
     do {                 \
-        printf("Yes\n"); \
+        msgprintf("Yes\n"); \
         Log("Success");  \
     } while (0)
 #define PrtNo(x)        \
     do {                \
-        printf("No\n"); \
+        msgprintf("No\n"); \
         Error(x);       \
     } while (0)
 #define Parse(maxargs)       \
@@ -63,7 +64,7 @@ int parse(char *line, char *argv[], int lim) {
 
 // return a negative value to exit
 int cmd_i(char *args) {
-    printf("%d %d\n", ncyl, nsec);
+    msgprintf("%d %d\n", ncyl, nsec);
     Log("%d Cylinders, %d Sectors per cylinder", ncyl, nsec);
     return 0;
 }
@@ -89,7 +90,7 @@ int cmd_r(char *args) {
     int tsleep = abs(cur_cyl - cyl) * ttd;
     usleep(tsleep * 1000);
     cur_cyl = cyl;
-    printf("Yes %s\n", buf);
+    msgprintf("Yes %s\n", buf);
     Log("Delay %d ms, Read data: %s", tsleep, buf);
     return 0;
 }
@@ -125,12 +126,12 @@ int cmd_w(char *args) {
     cur_cyl = cyl;
     unsigned char *p = diskfile + (cyl * nsec + sec) * BLOCKSIZE;
     memcpy(p, buf, BLOCKSIZE);
-    printf("Yes\n");
+    msgprintf("Yes\n");
     Log("Delay %d ms, Write successfully", tsleep);
     return 0;
 }
 int cmd_e(char *args) {
-    printf("Goodbye!\n");
+    msgprintf("Goodbye!\n");
     Log("Exit");
     return -1;
 }
@@ -145,11 +146,31 @@ static struct {
     {"E", cmd_e},
 };
 
+struct clientitem {};
+struct clientitem *client_init(int connfd) { return NULL; }
+
+int NCMD;
+int serve(int fd, char *buf, int len, struct clientitem *cli) {
+    Log("use command: %s", buf);
+    char *p = strtok(buf, " \r\n");
+    int ret = 1;
+    for (int i = 0; i < NCMD; i++)
+        if (strcmp(p, cmd_table[i].name) == 0) {
+            msginit();
+            ret = cmd_table[i].handler(p + strlen(p) + 1);
+            break;
+        }
+    if (ret == 1) {
+        PrtNo("No such command");
+    }
+    return ret;
+}
+
 int main(int argc, char *argv[]) {
-    if (argc != 5)
+    if (argc != 6)
         errx(1,
              "Usage: %s <cylinders> <sector per cylinder> "
-             "<track-to-track delay> <disk-storage filename>",
+             "<track-to-track delay> <disk-storage filename> <port>",
              argv[0]);
     // args
     ncyl = atoi(argv[1]);
@@ -175,25 +196,8 @@ int main(int argc, char *argv[]) {
     if (diskfile == MAP_FAILED) close(fd), err(1, "mmap");
 
     // command
-    static char buf[1024];
-    int NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
-    while (1) {
-        fgets(buf, sizeof(buf), stdin);
-        if (feof(stdin)) break;
-        buf[strlen(buf) - 1] = 0;
-        Log("use command: %s", buf);
-        char *p = strtok(buf, " ");
-        int ret = 1;
-        for (int i = 0; i < NCMD; i++)
-            if (strcmp(p, cmd_table[i].name) == 0) {
-                ret = cmd_table[i].handler(p + strlen(p) + 1);
-                break;
-            }
-        if (ret == 1) {
-            PrtNo("No such command");
-        }
-        if (ret < 0) break;
-    }
+    NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
+    init(atoi(argv[5]));
 
     ret = munmap(diskfile, filesize);
     if (ret < 0) close(fd), err(1, "munmap");

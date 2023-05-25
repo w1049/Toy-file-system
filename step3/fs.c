@@ -422,11 +422,7 @@ int itest(struct inode *ip) {
 // if (maxargs != MAXARGS) Debug("argv[argc] = %s", argv[argc]);
 
 int connfd;
-#define msginit() msgtmp = msg
-#define msgprintf(...)                            \
-    do {                                          \
-        msgtmp += sprintf(msgtmp, ##__VA_ARGS__); \
-    } while (0)
+
 #define msgflush() \
     do { \
         send(connfd, msg, msgtmp - msg, 0); \
@@ -1060,7 +1056,6 @@ int NCMD;
 
 int serve(int fd, char *buf, int len, struct clientitem *cli) {
     // command
-    buf[strlen(buf) - 1] = 0; // TODO is this OK?
     user = cli;
     connfd = fd;
     Log("uid=%u use command: %s", user->uid, buf);
@@ -1075,9 +1070,7 @@ int serve(int fd, char *buf, int len, struct clientitem *cli) {
         }
     if (ret == 1) {
         PrtNo("No such command");
-        return ret;
     }
-    if (ret < 0) return ret;
     return ret;
 }
 
