@@ -11,6 +11,7 @@
 
 #include "bio.h"
 #include "log.h"
+#include "common.h"
 #include "server.h"
 
 typedef unsigned int uint;
@@ -31,10 +32,10 @@ enum {
 };
 
 struct dinode {               // 64 bytes
-    unsigned short type : 2;  // File type: 0empty, 1dir or 2file
-    unsigned short mode : 4;  // File mode: rwrw for owner and others
-    unsigned short uid : 10;  // Owner id
-    unsigned short nlink;     // Number of links to inode
+    ushort type : 2;  // File type: 0empty, 1dir or 2file
+    ushort mode : 4;  // File mode: rwrw for owner and others
+    ushort uid : 10;  // Owner id
+    ushort nlink;     // Number of links to inode
     uint mtime;               // Last modified time
     uint size;                // Size in bytes
     uint blocks;              // Number of blocks, may be larger than size
@@ -44,10 +45,10 @@ struct dinode {               // 64 bytes
 // inode in memory
 struct inode {
     uint inum;
-    unsigned short type : 2;  // File type: 0empty, 1dir or 2file
-    unsigned short mode : 4;  // File mode: rwrw for owner and others
-    unsigned short uid : 10;  // Owner id
-    unsigned short nlink;     // Number of links to inode
+    ushort type : 2;  // File type: 0empty, 1dir or 2file
+    ushort mode : 4;  // File mode: rwrw for owner and others
+    ushort uid : 10;  // Owner id
+    ushort nlink;     // Number of links to inode
     uint mtime;               // Last modified time
     uint size;                // Size in bytes
     uint blocks;              // Number of blocks, may be larger than size
@@ -110,7 +111,7 @@ int nmeta;
 // things different from users
 struct clientitem {
     uint pwd;
-    unsigned short uid;
+    ushort uid;
 };
 struct clientitem *user;
 
@@ -126,7 +127,7 @@ struct clientitem *client_init(int connfd) {
 
 // zero a block
 void bzro(uint bno) {
-    char buf[BSIZE];
+    uchar buf[BSIZE];
     memset(buf, 0, BSIZE);
     bwrite(bno, buf);
 }
@@ -134,7 +135,7 @@ void bzro(uint bno) {
 // allocate a block
 uint balloc() {
     for (int i = 0; i < sb.size; i += BPB) {
-        char buf[BSIZE];
+        uchar buf[BSIZE];
         bread(BBLOCK(i), buf);
         for (int j = 0; j < BPB; j++) {
             int m = 1 << (j % 8);
@@ -152,7 +153,7 @@ uint balloc() {
 
 // free a block
 void bfree(uint bno) {
-    char buf[BSIZE];
+    uchar buf[BSIZE];
     bread(BBLOCK(bno), buf);
     int i = bno % BPB;
     int m = 1 << (i % 8);
@@ -169,7 +170,7 @@ struct inode *iget(uint inum) {
         Warn("iget: inum out of range");
         return NULL;
     }
-    char buf[BSIZE];
+    uchar buf[BSIZE];
     bread(IBLOCK(inum), buf);
     struct dinode *dip = (struct dinode *)buf + inum % IPB;
     if (dip->type == 0) {
@@ -195,7 +196,7 @@ struct inode *iget(uint inum) {
 // remember to free it!
 // return NULL if no inode is available
 struct inode *ialloc(short type) {
-    char buf[BSIZE];
+    uchar buf[BSIZE];
     for (int i = 0; i < sb.ninodes; i++) {
         bread(IBLOCK(i), buf);
         struct dinode *dip = (struct dinode *)buf + i % IPB;
@@ -217,7 +218,7 @@ struct inode *ialloc(short type) {
 
 // write the inode to disk
 void iupdate(struct inode *ip) {
-    char buf[BSIZE];
+    uchar buf[BSIZE];
     bread(IBLOCK(ip->inum), buf);
     struct dinode *dip = (struct dinode *)buf + ip->inum % IPB;
     dip->type = ip->type;
@@ -233,7 +234,7 @@ void iupdate(struct inode *ip) {
 
 // free all data blocks of an inode, but not the inode itself
 void itrunc(struct inode *ip) {
-    char buf[BSIZE];
+    uchar buf[BSIZE];
     int apb = APB;
 
     for (int i = 0; i < NDIRECT; i++)
@@ -254,7 +255,7 @@ void itrunc(struct inode *ip) {
     if (ip->addrs[NDIRECT + 1]) {
         bread(ip->addrs[NDIRECT + 1], buf);
         uint *addrs = (uint *)buf;
-        char buf2[BSIZE];
+        uchar buf2[BSIZE];
         for (int i = 0; i < apb; i++) {
             if (addrs[i]) {
                 bread(addrs[i], buf2);
@@ -279,7 +280,7 @@ void itrunc(struct inode *ip) {
 // you'd better use this continuously
 // will not increase ip->blocks, writei will do that
 int bmap(struct inode *ip, uint bn) {
-    char buf[BSIZE];
+    uchar buf[BSIZE];
     uint addr;
     if (bn < NDIRECT) {
         addr = ip->addrs[bn];
@@ -325,8 +326,8 @@ int bmap(struct inode *ip, uint bn) {
     }
 }
 
-int readi(struct inode *ip, char *dst, uint off, uint n) {
-    char buf[BSIZE];
+int readi(struct inode *ip, uchar *dst, uint off, uint n) {
+    uchar buf[BSIZE];
     if (off > ip->size || off + n < off) return -1;
     if (off + n > ip->size)  // read till EOF
         n = ip->size - off;
@@ -341,8 +342,8 @@ int readi(struct inode *ip, char *dst, uint off, uint n) {
 
 // may change the size
 // will update
-int writei(struct inode *ip, char *src, uint off, uint n) {
-    char buf[BSIZE];
+int writei(struct inode *ip, uchar *src, uint off, uint n) {
+    uchar buf[BSIZE];
     if (off > ip->size || off + n < off)
         return -1;  // off is larger than size || off overflow
     if (off + n > MAXFILEB * BSIZE) return -1;  // too large
@@ -460,7 +461,7 @@ static inline int checkPerm(uint inum, short perm) {
 // create a file in parent pinum
 // will not check name
 // return 0 for success
-int icreate(short type, char *name, uint pinum, unsigned short uid, unsigned short perm) {
+int icreate(short type, char *name, uint pinum, ushort uid, ushort perm) {
     struct inode *ip = ialloc(type);
     CheckIP(1);
     ip->mode = perm;
@@ -475,7 +476,7 @@ int icreate(short type, char *name, uint pinum, unsigned short uid, unsigned sho
         strcpy(des[0].name, ".");
         des[1].inum = pinum;
         strcpy(des[1].name, "..");
-        writei(ip, (char *)&des, ip->size, sizeof(des));
+        writei(ip, (uchar *)&des, ip->size, sizeof(des));
     } else
         iupdate(ip);
     Log("Create %s inode %d, inside directory inode %d",
@@ -488,7 +489,7 @@ int icreate(short type, char *name, uint pinum, unsigned short uid, unsigned sho
         struct dirent de;
         de.inum = inum;
         strcpy(de.name, name);
-        writei(ip, (char *)&de, ip->size, sizeof(de));
+        writei(ip, (uchar *)&de, ip->size, sizeof(de));
         free(ip);
     }
     return 0;
@@ -521,7 +522,7 @@ int parse(char *line, char *argv[], int lim) {
 // return a negative value to exit
 int cmd_f(char *args) {
     CheckLogin();
-    char buf[BSIZE];
+    uchar buf[BSIZE];
 
     // calculate args and write superblock
     int ncyl, nsec;
@@ -579,7 +580,7 @@ uint findinum(char *name) {
     struct inode *ip = iget(user->pwd);
     CheckIP(NINODES);
 
-    char *buf = malloc(ip->size);
+    uchar *buf = malloc(ip->size);
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
@@ -602,7 +603,7 @@ int delinum(uint inum) {
     struct inode *ip = iget(user->pwd);
     CheckIP(0);
 
-    char *buf = malloc(ip->size);
+    uchar *buf = malloc(ip->size);
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
@@ -615,14 +616,14 @@ int delinum(uint inum) {
         }
         if (de[i].inum == inum) {
             de[i].inum = NINODES;
-            writei(ip, (char *)&de[i], i * sizeof(struct dirent),
+            writei(ip, (uchar *)&de[i], i * sizeof(struct dirent),
                    sizeof(struct dirent));
         }
     }
 
     if (deleted > nfile / 2) {
         int newn = nfile - deleted, newsiz = newn * sizeof(struct dirent);
-        char *newbuf = malloc(newsiz);
+        uchar *newbuf = malloc(newsiz);
         struct dirent *newde = (struct dirent *)newbuf;
         int j = 0;
         for (int i = 0; i < nfile; i++) {
@@ -762,7 +763,7 @@ int cmd_rmdir(char *args) {
 
     // if dir is not empty
     int empty = 1;
-    char *buf = malloc(ip->size);
+    uchar *buf = malloc(ip->size);
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
@@ -821,7 +822,7 @@ int cmd_ls(char *args) {
     struct inode *ip = iget(user->pwd);
     CheckIP(0);
 
-    char *buf = malloc(ip->size);
+    uchar *buf = malloc(ip->size);
     readi(ip, buf, 0, ip->size);
     struct dirent *de = (struct dirent *)buf;
 
@@ -884,7 +885,7 @@ int cmd_cat(char *args) {
         return 0;
     }
 
-    char *buf = malloc(ip->size + 2);
+    uchar *buf = malloc(ip->size + 2);
     readi(ip, buf, 0, ip->size);
     buf[ip->size] = '\n';
     buf[ip->size + 1] = '\0';
@@ -923,7 +924,7 @@ int cmd_w(char *args) {
         return 0;
     }
 
-    writei(ip, data, 0, len);
+    writei(ip, (uchar *)data, 0, len);
 
     if (len < ip->size) {
         // if the new data is shorter, truncate
@@ -967,12 +968,12 @@ int cmd_i(char *args) {
 
     if (pos >= ip->size) {
         pos = ip->size;
-        writei(ip, data, pos, len);
+        writei(ip, (uchar *)data, pos, len);
     } else {
-        char *buf = malloc(ip->size - pos);
+        uchar *buf = malloc(ip->size - pos);
         // [pos, size) -> [pos+len, size+len)
         readi(ip, buf, pos, ip->size - pos);
-        writei(ip, data, pos, len);
+        writei(ip, (uchar *)data, pos, len);
         writei(ip, buf, pos + len, ip->size - pos);
     }
 
@@ -1009,7 +1010,7 @@ int cmd_d(char *args) {
     } else {
         // [pos + len, size) -> [pos, size - len)
         uint copylen = ip->size - pos - len;
-        char *buf = malloc(copylen);
+        uchar *buf = malloc(copylen);
         readi(ip, buf, pos + len, copylen);
         writei(ip, buf, pos, copylen);
         ip->size -= len;
@@ -1047,7 +1048,7 @@ static struct {
                  {"login", cmd_login}};
 
 void sbinit() {
-    char buf[BSIZE];
+    uchar buf[BSIZE];
     bread(0, buf);
     memcpy(&sb, buf, sizeof(sb));
 }

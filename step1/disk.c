@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "log.h"
+#include "common.h"
 
 // hex and dec
 static inline int hex2int(char ch) {
@@ -20,7 +21,7 @@ static char hex[] = "0123456789abcdef";
 // Block size in bytes
 #define BLOCKSIZE 256
 int ncyl, nsec, ttd;
-unsigned char *diskfile;
+uchar *diskfile;
 int cur_cyl;
 
 #define PrtYes()         \
@@ -69,7 +70,7 @@ int cmd_i(char *args) {
 }
 int cmd_r(char *args) {
     Parse(MAXARGS);
-    static char buf[BLOCKSIZE * 2 + 1];
+    static uchar buf[BLOCKSIZE * 2 + 1];
     if (argc < 2) {
         PrtNo("Invalid arguments");
         return 0;
@@ -80,7 +81,7 @@ int cmd_r(char *args) {
         PrtNo("Invalid cylinder or sector");
         return 0;
     }
-    unsigned char *p = diskfile + (cyl * nsec + sec) * BLOCKSIZE;
+    uchar *p = diskfile + (cyl * nsec + sec) * BLOCKSIZE;
     for (int i = 0; i < BLOCKSIZE; i++) {
         buf[i * 2] = hex[p[i] / 16];
         buf[i * 2 + 1] = hex[p[i] % 16];
@@ -95,7 +96,7 @@ int cmd_r(char *args) {
 }
 int cmd_w(char *args) {
     Parse(MAXARGS);
-    static unsigned char buf[BLOCKSIZE];
+    static uchar buf[BLOCKSIZE];
     if (argc < 3) {
         PrtNo("Invalid arguments");
         return 0;
@@ -123,7 +124,7 @@ int cmd_w(char *args) {
     int tsleep = abs(cur_cyl - cyl) * ttd;
     usleep(tsleep * 1000);
     cur_cyl = cyl;
-    unsigned char *p = diskfile + (cyl * nsec + sec) * BLOCKSIZE;
+    uchar *p = diskfile + (cyl * nsec + sec) * BLOCKSIZE;
     memcpy(p, buf, BLOCKSIZE);
     printf("Yes\n");
     Log("Delay %d ms, Write successfully", tsleep);
