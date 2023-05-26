@@ -4,10 +4,10 @@ CFLAGS += -Wall -Werror -fsanitize=address -g -DDEBUG
 
 all: fs disk
 
-fs: fs.o bio.o
+fs: fs.o bio.o server.o
 	$(CC) $(CFLAGS) $^ -o $@
 
-disk: disk.o
+disk: disk.o server.o
 	$(CC) $(CFLAGS) $^ -o $@
 
 include ${SRC:.c=.d}

@@ -9,6 +9,7 @@
 #include "log.h"
 #include "common.h"
 #include "server.h"
+MSGDEF;
 
 // hex and dec
 static inline int hex2int(char ch) {
@@ -147,23 +148,24 @@ static struct {
     {"E", cmd_e},
 };
 
-struct clientitem {};
-struct clientitem *client_init(int connfd) { return NULL; }
+void *client_init(int connfd) { return NULL; }
 
 int NCMD;
-int serve(int fd, char *buf, int len, struct clientitem *cli) {
+int serve(int fd, char *buf, int len, void *) {
     Log("use command: %s", buf);
     char *p = strtok(buf, " \r\n");
+    if (!p) return 0;
     int ret = 1;
+    msginit();
     for (int i = 0; i < NCMD; i++)
         if (strcmp(p, cmd_table[i].name) == 0) {
-            msginit();
             ret = cmd_table[i].handler(p + strlen(p) + 1);
             break;
         }
     if (ret == 1) {
         PrtNo("No such command");
     }
+    send(fd, msg, msgtmp - msg, 0);
     return ret;
 }
 
@@ -198,7 +200,7 @@ int main(int argc, char *argv[]) {
 
     // command
     NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
-    init(atoi(argv[5]));
+    mainloop(atoi(argv[5]), client_init, serve);
 
     ret = munmap(diskfile, filesize);
     if (ret < 0) close(fd), err(1, "munmap");

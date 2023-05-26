@@ -13,6 +13,7 @@
 #include "log.h"
 #include "common.h"
 #include "server.h"
+MSGDEF;
 
 typedef unsigned int uint;
 
@@ -115,7 +116,7 @@ struct clientitem {
 };
 struct clientitem *user;
 
-struct clientitem *client_init(int connfd) {
+void *client_init(int connfd) {
     struct clientitem *cli = malloc(sizeof(struct clientitem));
     cli->pwd = 0;
     cli->uid = 0;
@@ -1055,23 +1056,24 @@ void sbinit() {
 
 int NCMD;
 
-int serve(int fd, char *buf, int len, struct clientitem *cli) {
+int serve(int fd, char *buf, int len, void *cli) {
     // command
     user = cli;
     connfd = fd;
     Log("uid=%u use command: %s", user->uid, buf);
     char *p = strtok(buf, " \r\n");
-    int ret = 1;
     if (!p) return 0;
+    int ret = 1;
+    msginit();
     for (int i = 0; i < NCMD; i++)
         if (strcmp(p, cmd_table[i].name) == 0) {
-            msginit();
             ret = cmd_table[i].handler(p + strlen(p) + 1);
             break;
         }
     if (ret == 1) {
         PrtNo("No such command");
     }
+    send(fd, msg, msgtmp - msg, 0);
     return ret;
 }
 
@@ -1085,7 +1087,7 @@ int main(int argc, char *argv[]) {
     sbinit();
 
     NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
-    init(atoi(argv[1]));
+    mainloop(atoi(argv[1]), client_init, serve);
 
     log_close();
 }
