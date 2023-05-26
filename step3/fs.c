@@ -432,8 +432,6 @@ int connfd;
         msgtmp = msg; \
     } while (0)
 
-#define ROOTINO 0
-
 enum {
     R = 0b10,
     W = 0b01 
@@ -723,17 +721,13 @@ int cmd_rm(char *args) {
     PrtYes();
     return 0;
 }
-int cmd_cd(char *args) {
-    CheckFmt();
-    Parse(MAXARGS);
-    if (argc < 1) {
-        PrtNo("Usage: cd <dirname>");
-        return 0;
-    }
-    uint inum = findinum(argv[0]);
+
+// 0 for success
+int _cd(char *name) {
+    uint inum = findinum(name);
     if (inum == NINODES) {
         PrtNo("Not found!");
-        return 0;
+        return 1;
     }
     CheckPerm(inum, R);
     struct inode *ip = iget(inum);
@@ -741,10 +735,32 @@ int cmd_cd(char *args) {
     if (ip->type != T_DIR) {
         PrtNo("Not a directory");
         free(ip);
-        return 0;
+        return 1;
     }
     user->pwd = inum;
     free(ip);
+    return 0;
+}
+
+int cmd_cd(char *args) {
+    CheckFmt();
+    Parse(MAXARGS);
+    if (argc < 1) {
+        PrtNo("Usage: cd <dirname>");
+        return 0;
+    }
+    char *ptr = NULL;
+    int backup = user->pwd;
+    if (argv[0][0] == '/') user->pwd = 0;
+    char *p = strtok_r(argv[0], "/", &ptr);
+    while (p) {
+        if (_cd(p) != 0) {
+            user->pwd = backup;
+            return 0;
+        }
+        p = strtok_r(NULL, "/", &ptr);
+    }
+
     PrtYes();
     return 0;
 }
@@ -852,8 +868,11 @@ int cmd_ls(char *args) {
         free(sub);
     }
     qsort(entries, n, sizeof(struct entry), cmp_ls);
-    char str[100];  // for time
+    static char str[100];  // for time
+    static char logbuf[4096], *logtmp;
     msgprintf("\33[1mType \tOwner\tUpdate time\tSize\tName\033[0m\n");
+    logtmp = logbuf;
+    logtmp += sprintf(logtmp, "List files\nType \tOwner\tUpdate time\tSize\tName\n");
     for (int i = 0; i < n; i++) {
         time_t mtime = entries[i].mtime;
         struct tm *tmptr = localtime(&mtime);
@@ -861,13 +880,15 @@ int cmd_ls(char *args) {
         short d = entries[i].type == T_DIR;
         short m = (d  << 4) | entries[i].mode;
         static char a[] = "drwrw";
-        for (int j = 0; j <= 4; j++)
+        for (int j = 0; j <= 4; j++) {
             msgprintf("%c", m & (1 << (4-j)) ? a[j] : '-');
+            logtmp += sprintf(logtmp, "%c", m & (1 << (4-j)) ? a[j] : '-');
+        }
         msgprintf("\t%u\t%s\t%d\t", entries[i].uid, str, entries[i].size);
         msgprintf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
-        if (i % 2 == 0) msgflush();
-        // TODO Log
+        logtmp += sprintf(logtmp, "\t%u\t%s\t%d\t%s\n", entries[i].uid, str, entries[i].size, entries[i].name);
     }
+    Log("%s", logbuf);
     free(entries);
     free(buf);
     free(ip);
