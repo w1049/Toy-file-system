@@ -886,6 +886,7 @@ int cmd_ls(char *args) {
         }
         msgprintf("\t%u\t%s\t%d\t", entries[i].uid, str, entries[i].size);
         msgprintf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
+        // WARN: BUFFER OVERFLOW
         logtmp += sprintf(logtmp, "\t%u\t%s\t%d\t%s\n", entries[i].uid, str, entries[i].size, entries[i].name);
     }
     Log("%s", logbuf);
