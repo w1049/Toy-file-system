@@ -66,3 +66,167 @@ Goodbye!
 [INFO] use command: E
 [INFO] Exit
 ```
+# Step 1
+```
+make
+./fs > a.out
+```
+Use commands:
+```
+login 1
+f
+mk b
+mkdir a
+mk c
+mkdir d
+mkdir e
+rmdir d
+rm c
+ls
+cd a
+mkdir aa
+cd aa
+mk aaa
+cd ../..
+ls
+cd /a/aa/./
+ls
+w aaa 13 Hello, World!
+cat aaa
+i aaa 5 2 XX
+cat aaa
+d aaa 7 3
+cat aaa
+cd /
+ls
+e
+```
+I use some ASCII control character, so I advise not to redirect the output to a file.
+`a.out` will be:
+```
+Hello, uid=1!
+Done
+Yes
+Yes
+Yes
+Yes
+Yes
+Yes
+Yes
+[1mType 	Owner	Update time	Size	Name[0m
+drwr-	1	05-26 22:03	32	[34m[1ma[0m
+drwr-	1	05-26 22:03	32	[34m[1me[0m
+-rwr-	1	05-26 22:03	0	b
+Yes
+Yes
+Yes
+Yes
+Yes
+[1mType 	Owner	Update time	Size	Name[0m
+drwr-	1	05-26 22:03	48	[34m[1ma[0m
+drwr-	1	05-26 22:03	32	[34m[1me[0m
+-rwr-	1	05-26 22:03	0	b
+Yes
+[1mType 	Owner	Update time	Size	Name[0m
+-rwr-	1	05-26 22:03	0	aaa
+Yes
+Hello, World!
+
+Yes
+HelloXX, World!
+
+Yes
+HelloXXorld!
+
+Yes
+[1mType 	Owner	Update time	Size	Name[0m
+drwr-	1	05-26 22:03	48	[34m[1ma[0m
+drwr-	1	05-26 22:03	32	[34m[1me[0m
+-rwr-	1	05-26 22:03	0	b
+Goodbye!
+```
+`fs.log` will be:
+```
+[INFO] ncyl=1024, nsec=63
+[INFO] Superblock initialized, not formatted
+[INFO] size=0, nblocks=0, ninodes=0
+[INFO] use command: login 1
+[INFO] use command: f
+[INFO] ncyl=1024 nsec=63 fsize=64512
+[INFO] ninodeblocks=64512 nbitmap=290 nblocks=64222
+[INFO] sb: magic=0x5346594d size=64512 nblocks=64222 ninodes=1024 inodestart=1 bmapstart=258
+[INFO] Create dir inode 0, inside directory inode 0
+[INFO] Success
+[INFO] use command: mk b
+[INFO] Create file inode 1, inside directory inode 0
+[INFO] Success
+[INFO] use command: mkdir a
+[INFO] Create dir inode 2, inside directory inode 0
+[INFO] Success
+[INFO] use command: mk c
+[INFO] Create file inode 3, inside directory inode 0
+[INFO] Success
+[INFO] use command: mkdir d
+[INFO] Create dir inode 4, inside directory inode 0
+[INFO] Success
+[INFO] use command: mkdir e
+[INFO] Create dir inode 5, inside directory inode 0
+[INFO] Success
+[INFO] use command: rmdir d
+[INFO] Success
+[INFO] use command: rm c
+[INFO] Success
+[INFO] use command: ls
+[INFO] List files
+Type 	Owner	Update time	Size	Name
+drwr-	1	05-26 22:03	32	a
+drwr-	1	05-26 22:03	32	e
+-rwr-	1	05-26 22:03	0	b
+
+[INFO] use command: cd a
+[INFO] Success
+[INFO] use command: mkdir aa
+[INFO] Create dir inode 6, inside directory inode 2
+[INFO] Success
+[INFO] use command: cd aa
+[INFO] Success
+[INFO] use command: mk aaa
+[INFO] Create file inode 7, inside directory inode 6
+[INFO] Success
+[INFO] use command: cd ../..
+[INFO] Success
+[INFO] use command: ls
+[INFO] List files
+Type 	Owner	Update time	Size	Name
+drwr-	1	05-26 22:03	48	a
+drwr-	1	05-26 22:03	32	e
+-rwr-	1	05-26 22:03	0	b
+
+[INFO] use command: cd /a/aa/./
+[INFO] Success
+[INFO] use command: ls
+[INFO] List files
+Type 	Owner	Update time	Size	Name
+-rwr-	1	05-26 22:03	0	aaa
+
+[INFO] use command: w aaa 13 Hello, World!
+[INFO] Success
+[INFO] use command: cat aaa
+[INFO] use command: i aaa 5 2 XX
+[INFO] Success
+[INFO] use command: cat aaa
+[INFO] use command: d aaa 7 3
+[INFO] Success
+[INFO] use command: cat aaa
+[INFO] use command: cd /
+[INFO] Success
+[INFO] use command: ls
+[INFO] List files
+Type 	Owner	Update time	Size	Name
+drwr-	1	05-26 22:03	48	a
+drwr-	1	05-26 22:03	32	e
+-rwr-	1	05-26 22:03	0	b
+
+[INFO] use command: e
+[INFO] Exit
+```

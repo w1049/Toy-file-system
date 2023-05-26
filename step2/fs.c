@@ -82,7 +82,7 @@ struct superblock {
 } sb;
 
 // total number of inodes
-#define NINODES 1024
+#define NINODES 512
 
 // inodes per block
 #define IPB (BSIZE / sizeof(struct dinode))
@@ -996,6 +996,7 @@ int cmd_i(char *args) {
         readi(ip, buf, pos, ip->size - pos);
         writei(ip, (uchar *)data, pos, len);
         writei(ip, buf, pos + len, ip->size - pos);
+        free(buf);
     }
 
     free(ip);
@@ -1037,6 +1038,7 @@ int cmd_d(char *args) {
         ip->size -= len;
         iupdate(ip);
         itest(ip);  // try to shrink
+        free(buf);
     }
 
     free(ip);
