@@ -241,3 +241,5 @@ Then you can start many clients:
 ./client 12345
 ```
 By default, a user can only read files from other users and cannot write to them. You can try it by yourself.
+
+In step3, all logs are printed in the shell.

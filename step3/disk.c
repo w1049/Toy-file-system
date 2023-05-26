@@ -152,6 +152,7 @@ void *client_init(int connfd) { return NULL; }
 
 int NCMD;
 int serve(int fd, char *buf, int len, void *) {
+    buf[len] = buf[len + 1] = 0;
     Log("use command: %s", buf);
     char *p = strtok(buf, " \r\n");
     if (!p) return 0;

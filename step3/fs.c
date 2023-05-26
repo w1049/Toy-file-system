@@ -1100,6 +1100,7 @@ int serve(int fd, char *buf, int len, void *cli) {
     // command
     user = cli;
     connfd = fd;
+    buf[len] = buf[len + 1] = 0;
     Log("uid=%u use command: %s", user->uid, buf);
     char *p = strtok(buf, " \r\n");
     if (!p) return 0;
