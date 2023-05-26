@@ -107,6 +107,9 @@ int ninodesblocks = (NINODES / IPB) + 1;
 int nbitmap;
 int nmeta;
 
+uint pwd;
+ushort uid;
+
 // Disk layout:
 // [ superblock | inode blocks | free bit map | data blocks ]
 
@@ -152,7 +155,7 @@ void bfree(uint bno) {
 // return NULL if not found
 struct inode *iget(uint inum) {
     if (inum < 0 || inum >= sb.ninodes) {
-        Warn("iget: inum out of range");
+        Warn("iget: inum %d out of range", inum);
         return NULL;
     }
     uchar buf[BSIZE];
@@ -210,7 +213,7 @@ void iupdate(struct inode *ip) {
     dip->mode = ip->mode;
     dip->uid = ip->uid;
     dip->nlink = ip->nlink;
-    dip->mtime = ip->mtime;
+    dip->mtime = ip->mtime = time(NULL);
     dip->size = ip->size;
     dip->blocks = ip->blocks;
     memcpy(dip->addrs, ip->addrs, sizeof(ip->addrs));
@@ -311,6 +314,8 @@ int bmap(struct inode *ip, uint bn) {
     }
 }
 
+// read from the inode
+// return the number of bytes read
 int readi(struct inode *ip, uchar *dst, uint off, uint n) {
     uchar buf[BSIZE];
     if (off > ip->size || off + n < off) return -1;
@@ -325,6 +330,8 @@ int readi(struct inode *ip, uchar *dst, uint off, uint n) {
     return n;
 }
 
+// write to the inode
+// return the number of bytes written
 // may change the size
 // will update
 int writei(struct inode *ip, uchar *src, uint off, uint n) {
@@ -344,33 +351,58 @@ int writei(struct inode *ip, uchar *src, uint off, uint n) {
         ip->size = off;
         ip->blocks =
             max(1 + (off - 1) / BSIZE, ip->blocks);  // blocks may change
+    }
+    ip->mtime = time(NULL);
+    iupdate(ip);
+    return n;
+}
+
+// test if ip->blocks is too larger than size
+// recycle blocks
+// use after shrink ip->size, such as truct
+int itest(struct inode *ip) {
+    int true_blocks = 1 + (ip->size - 1) / BSIZE;
+    if (true_blocks <= ip->blocks / 2) {
+        Log("Block usage: %d/%d, recycle", true_blocks, ip->blocks);
+        for (int i = ip->blocks - 1; i > true_blocks; i--)
+            bfree(bmap(ip, i));
+        ip->blocks = true_blocks;
         iupdate(ip);
     }
-    return n;
+    return 0;
 }
 
 #define MAGIC 0x5346594d
 
-#define PrtYes()         \
-    do {                 \
-        printf("Yes\n"); \
-        Log("Success");  \
+#define PrtYes()            \
+    do {                    \
+        printf("Yes\n");    \
+        Log("Success");     \
     } while (0)
-#define PrtNo(x)        \
-    do {                \
-        printf("No\n"); \
-        Warn(x);       \
+#define PrtNo(x)           \
+    do {                   \
+        printf("No\n");    \
+        Warn(x);           \
     } while (0)
 #define CheckIP(x)               \
     do {                         \
         if (!ip) {               \
-            printf("No\n");      \
+            printf("No\n");   \
             Warn("ip is NULL"); \
             return x;            \
         }                        \
     } while (0)
+
+#define CheckLogin()                                           \
+    do {                                                       \
+        if (uid == 0) {                                  \
+            printf("Please enter your UID: login <uid>\n"); \
+            return 0;                                          \
+        }                                                      \
+    } while (0)
 #define CheckFmt()                  \
     do {                            \
+        CheckLogin();               \
         if (sb.magic != MAGIC) {    \
             PrtNo("Not formatted"); \
             return 0;               \
@@ -382,19 +414,42 @@ int writei(struct inode *ip, uchar *src, uint off, uint n) {
 // for (int i = 0; i < argc; i++) Debug("argv[%d] = %s", i, argv[i]);
 // if (maxargs != MAXARGS) Debug("argv[argc] = %s", argv[argc]);
 
-#define UID 666
-#define ROOTINO 0
+enum {
+    R = 0b10,
+    W = 0b01 
+};
+
+// check if user has permission
+static inline int checkPerm(uint inum, short perm) {
+    struct inode *ip = iget(inum);
+    CheckIP(0);
+    int ret = 0;
+    if (ip->uid == uid) ret = 1;
+    else {
+        if ((ip->mode & perm) == perm) ret = 1;
+        else ret = 0;
+    }
+    free(ip);
+    return ret;
+}
+
+#define CheckPerm(inum, perm) \
+    do {             \
+        if (!checkPerm(inum, perm)) { \
+            PrtNo("Permission denied"); \
+            return 0; \
+        } \
+    } while (0)
 
 // create a file in parent pinum
 // will not check name
 // return 0 for success
-int icreate(short type, char *name, uint pinum) {
+int icreate(short type, char *name, uint pinum, ushort uid, ushort perm) {
     struct inode *ip = ialloc(type);
     CheckIP(1);
-    ip->mode = 0b1111;
-    ip->uid = UID;
+    ip->mode = perm;
+    ip->uid = uid;
     ip->nlink = 1;
-    ip->mtime = time(NULL);
     ip->size = 0;
     ip->blocks = 0;
     uint inum = ip->inum;
@@ -414,6 +469,7 @@ int icreate(short type, char *name, uint pinum) {
     if (pinum != inum) {  // root will not enter here
                           // for normal files, add it to the parent directory
         ip = iget(pinum);
+        CheckIP(1);
         struct dirent de;
         de.inum = inum;
         strcpy(de.name, name);
@@ -433,11 +489,11 @@ int icreate(short type, char *name, uint pinum) {
 int parse(char *line, char *argv[], int lim) {
     char *p;
     int argc = 0;
-    p = strtok(line, " ");
+    p = strtok(line, " \r\n");
     while (p) {
         argv[argc++] = p;
         if (argc >= lim) break;
-        p = strtok(NULL, " ");
+        p = strtok(NULL, " \r\n");
     }
     if (argc >= lim) {
         argv[argc] = p + strlen(p) + 1;
@@ -447,13 +503,13 @@ int parse(char *line, char *argv[], int lim) {
     return argc;
 }
 
+int ncyl, nsec;
 // return a negative value to exit
 int cmd_f(char *args) {
+    CheckLogin();
     uchar buf[BSIZE];
 
     // calculate args and write superblock
-    int ncyl, nsec;
-    binfo(&ncyl, &nsec);
     fsize = ncyl * nsec;
     Log("ncyl=%d nsec=%d fsize=%d", ncyl, nsec, fsize);
     nbitmap = (fsize / BPB) + 1;
@@ -475,6 +531,13 @@ int cmd_f(char *args) {
     memcpy(buf, &sb, sizeof(sb));
     bwrite(0, buf);
 
+    // bitmap init
+    memset(buf, 0, BSIZE);
+    for (int i = 0; i < sb.size; i += BPB)
+        bwrite(BBLOCK(i), buf);
+    for (int i = 0; i < NINODES; i += IPB)
+        bwrite(IBLOCK(i), buf);
+
     // mark meta blocks as in use
     for (int i = 0; i < nmeta; i += BPB) {
         memset(buf, 0, BSIZE);
@@ -484,12 +547,11 @@ int cmd_f(char *args) {
     }
 
     // make root dir
-    if (!icreate(T_DIR, NULL, 0)) PrtYes();
+    if (!icreate(T_DIR, NULL, 0, 0, 0b1111)) PrtYes();
     return 0;
 }
 
-uint pwdinum = 0;
-
+// if name is valid for file or dir
 int is_name_valid(char *name) {
     int len = strlen(name);
     if (len >= MAXNAME) return 0;
@@ -503,10 +565,11 @@ int is_name_valid(char *name) {
     return 1;
 }
 
+// find in pwd
 // NINODES for not found
 // return inum of the file
 uint findinum(char *name) {
-    struct inode *ip = iget(pwdinum);
+    struct inode *ip = iget(pwd);
     CheckIP(NINODES);
 
     uchar *buf = malloc(ip->size);
@@ -529,7 +592,7 @@ uint findinum(char *name) {
 
 // delete inode from pwd
 int delinum(uint inum) {
-    struct inode *ip = iget(pwdinum);
+    struct inode *ip = iget(pwd);
     CheckIP(0);
 
     uchar *buf = malloc(ip->size);
@@ -537,15 +600,35 @@ int delinum(uint inum) {
     struct dirent *de = (struct dirent *)buf;
 
     int nfile = ip->size / sizeof(struct dirent);
+    int deleted = 1;
     for (int i = 0; i < nfile; i++) {
-        if (de[i].inum == NINODES) continue;  // deleted
+        if (de[i].inum == NINODES) {
+            ++deleted;
+            continue;  // deleted
+        }
         if (de[i].inum == inum) {
             de[i].inum = NINODES;
             writei(ip, (uchar *)&de[i], i * sizeof(struct dirent),
                    sizeof(struct dirent));
-            break;
         }
     }
+
+    if (deleted > nfile / 2) {
+        int newn = nfile - deleted, newsiz = newn * sizeof(struct dirent);
+        uchar *newbuf = malloc(newsiz);
+        struct dirent *newde = (struct dirent *)newbuf;
+        int j = 0;
+        for (int i = 0; i < nfile; i++) {
+            if (de[i].inum == NINODES) continue;  // deleted
+            memcpy(&newde[j++], &de[i], sizeof(struct dirent));
+        }
+        assert (j == newn);
+        ip->size = newsiz;
+        writei(ip, newbuf, 0, newsiz);
+        free(newbuf);
+        itest(ip); // try to shrink
+    }
+
     free(buf);
     free(ip);
     return 0;
@@ -566,7 +649,9 @@ int cmd_mk(char *args) {
         PrtNo("Already exists!");
         return 0;
     }
-    if (!icreate(T_FILE, argv[0], pwdinum)) PrtYes();
+    CheckPerm(pwd, R|W);
+    short mode = argc >= 2 ? (atoi(argv[1]) & 0b1111) : 0b1110;
+    if (!icreate(T_FILE, argv[0], pwd, uid, mode)) PrtYes();
     return 0;
 }
 int cmd_mkdir(char *args) {
@@ -584,7 +669,9 @@ int cmd_mkdir(char *args) {
         PrtNo("Already exists!");
         return 0;
     }
-    if (!icreate(T_DIR, argv[0], pwdinum)) PrtYes();
+    CheckPerm(pwd, R|W);
+    short mode = argc >= 2 ? (atoi(argv[1]) & 0b1111) : 0b1110;
+    if (!icreate(T_DIR, argv[0], pwd, uid, mode)) PrtYes();
     return 0;
 }
 int cmd_rm(char *args) {
@@ -599,6 +686,8 @@ int cmd_rm(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, W);
+    CheckPerm(pwd, R|W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -617,6 +706,28 @@ int cmd_rm(char *args) {
     PrtYes();
     return 0;
 }
+
+// cd in pwd
+// 0 for success
+int _cd(char *name) {
+    uint inum = findinum(name);
+    if (inum == NINODES) {
+        PrtNo("Not found!");
+        return 1;
+    }
+    CheckPerm(inum, R);
+    struct inode *ip = iget(inum);
+    CheckIP(0);
+    if (ip->type != T_DIR) {
+        PrtNo("Not a directory");
+        free(ip);
+        return 1;
+    }
+    pwd = inum;
+    free(ip);
+    return 0;
+}
+
 int cmd_cd(char *args) {
     CheckFmt();
     Parse(MAXARGS);
@@ -624,23 +735,22 @@ int cmd_cd(char *args) {
         PrtNo("Usage: cd <dirname>");
         return 0;
     }
-    uint inum = findinum(argv[0]);
-    if (inum == NINODES) {
-        PrtNo("Not found!");
-        return 0;
+    char *ptr = NULL;
+    int backup = pwd;
+    if (argv[0][0] == '/') pwd = 0; // start from root
+    char *p = strtok_r(argv[0], "/", &ptr);
+    while (p) {
+        if (_cd(p) != 0) { // if not success
+            pwd = backup; // restore the pwd
+            return 0;
+        }
+        p = strtok_r(NULL, "/", &ptr);
     }
-    struct inode *ip = iget(inum);
-    CheckIP(0);
-    if (ip->type != T_DIR) {
-        PrtNo("Not a directory");
-        free(ip);
-        return 0;
-    }
-    pwdinum = inum;
-    free(ip);
+
     PrtYes();
     return 0;
 }
+// rm empty dir
 int cmd_rmdir(char *args) {
     CheckFmt();
     Parse(MAXARGS);
@@ -653,6 +763,8 @@ int cmd_rmdir(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, R|W);
+    CheckPerm(pwd, R|W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_DIR) {
@@ -694,6 +806,8 @@ int cmd_rmdir(char *args) {
 // for ls
 struct entry {
     short type;
+    short uid;
+    short mode;
     char name[MAXNAME];
     uint mtime;
     uint size;
@@ -716,7 +830,8 @@ int cmp_ls(const void *a, const void *b) {
 // now no arg
 int cmd_ls(char *args) {
     CheckFmt();
-    struct inode *ip = iget(pwdinum);
+    CheckPerm(pwd, R);
+    struct inode *ip = iget(pwd);
     CheckIP(0);
 
     uchar *buf = malloc(ip->size);
@@ -730,26 +845,38 @@ int cmd_ls(char *args) {
         if (strcmp(de[i].name, ".") == 0 || strcmp(de[i].name, "..") == 0)
             continue;
         struct inode *sub = iget(de[i].inum);
+        CheckIP(0);
         entries[n].type = sub->type;
         strcpy(entries[n].name, de[i].name);
         entries[n].mtime = sub->mtime;
+        entries[n].uid = sub->uid;
+        entries[n].mode = sub->mode;
         entries[n++].size = sub->size;
         free(sub);
     }
     qsort(entries, n, sizeof(struct entry), cmp_ls);
-    char str[100];  // for time
-    printf("\33[1mType\tUpdate time\tSize\tName\033[0m\n");
+    static char str[100];  // for time
+    static char logbuf[4096], *logtmp;
+    printf("\33[1mType \tOwner\tUpdate time\tSize\tName\033[0m\n");
+    logtmp = logbuf;
+    logtmp += sprintf(logtmp, "List files\nType \tOwner\tUpdate time\tSize\tName\n");
     for (int i = 0; i < n; i++) {
         time_t mtime = entries[i].mtime;
         struct tm *tmptr = localtime(&mtime);
         strftime(str, sizeof(str), "%m-%d %H:%M", tmptr);
-        int d = entries[i].type == T_DIR;
-        printf("%s\t", d ? "d" : "f");
-        printf("%s\t%d\t", str, entries[i].size);
+        short d = entries[i].type == T_DIR;
+        short m = (d  << 4) | entries[i].mode;
+        static char a[] = "drwrw";
+        for (int j = 0; j <= 4; j++) {
+            printf("%c", m & (1 << (4-j)) ? a[j] : '-');
+            logtmp += sprintf(logtmp, "%c", m & (1 << (4-j)) ? a[j] : '-');
+        }
+        printf("\t%u\t%s\t%d\t", entries[i].uid, str, entries[i].size);
         printf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
-        Log("%s\t%s\t%s\t%dB", d ? "d" : "f", entries[i].name, str,
-            entries[i].size);
+        // WARN: BUFFER OVERFLOW
+        logtmp += sprintf(logtmp, "\t%u\t%s\t%d\t%s\n", entries[i].uid, str, entries[i].size, entries[i].name);
     }
+    Log("%s", logbuf);
     free(entries);
     free(buf);
     free(ip);
@@ -768,6 +895,7 @@ int cmd_cat(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, R);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -776,9 +904,10 @@ int cmd_cat(char *args) {
         return 0;
     }
 
-    uchar *buf = malloc(ip->size + 1);
+    uchar *buf = malloc(ip->size + 2);
     readi(ip, buf, 0, ip->size);
-    buf[ip->size] = 0;
+    buf[ip->size] = '\n';
+    buf[ip->size + 1] = '\0';
     printf("%s\n", buf);
 
     free(buf);
@@ -797,6 +926,7 @@ int cmd_w(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -807,6 +937,11 @@ int cmd_w(char *args) {
 
     uint len = atoi(argv[1]);
     char *data = argv[2];
+    if (len > 512 || len > strlen(data)) {
+        PrtNo("Too long");
+        free(ip);
+        return 0;
+    }
 
     writei(ip, (uchar *)data, 0, len);
 
@@ -814,6 +949,7 @@ int cmd_w(char *args) {
         // if the new data is shorter, truncate
         ip->size = len;
         iupdate(ip);
+        itest(ip);
     }
 
     free(ip);
@@ -822,7 +958,8 @@ int cmd_w(char *args) {
 }
 int cmd_i(char *args) {
     CheckFmt();
-    Parse(3) if (argc < 3) {
+    Parse(3);
+    if (argc < 3) {
         PrtNo("Usage: i <filename> <pos> <length> <data>");
         return 0;
     }
@@ -831,6 +968,7 @@ int cmd_i(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -841,6 +979,11 @@ int cmd_i(char *args) {
     uint pos = atoi(argv[1]);
     uint len = atoi(argv[2]);
     char *data = argv[3];
+    if (len > 512 || len > strlen(data)) {
+        PrtNo("Too long");
+        free(ip);
+        return 0;
+    }
 
     if (pos >= ip->size) {
         pos = ip->size;
@@ -869,6 +1012,7 @@ int cmd_d(char *args) {
         PrtNo("Not found!");
         return 0;
     }
+    CheckPerm(inum, W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -890,6 +1034,7 @@ int cmd_d(char *args) {
         writei(ip, buf, pos, copylen);
         ip->size -= len;
         iupdate(ip);
+        itest(ip); // try to shrink
     }
 
     free(ip);
@@ -901,21 +1046,49 @@ int cmd_e(char *args) {
     Log("Exit");
     return -1;
 }
+int cmd_login(char *args) {
+    int auid = atoi(args);
+    if (auid <= 0 || auid >= 1024) {
+        PrtNo("Invalid uid");
+        return 0;
+    }
+    uid = auid;
+    printf("Hello, uid=%u!\n", uid);
+    return 0;
+}
 
 static struct {
     const char *name;
     int (*handler)(char *);
-} cmd_table[] = {
-    {"f", cmd_f},   {"mk", cmd_mk},   {"mkdir", cmd_mkdir},
-    {"rm", cmd_rm}, {"cd", cmd_cd},   {"rmdir", cmd_rmdir},
-    {"ls", cmd_ls}, {"cat", cmd_cat}, {"w", cmd_w},
-    {"i", cmd_i},   {"d", cmd_d},     {"e", cmd_e},
-};
+} cmd_table[] = {{"f", cmd_f},        {"mk", cmd_mk},   {"mkdir", cmd_mkdir},
+                 {"rm", cmd_rm},      {"cd", cmd_cd},   {"rmdir", cmd_rmdir},
+                 {"ls", cmd_ls},      {"cat", cmd_cat}, {"w", cmd_w},
+                 {"i", cmd_i},        {"d", cmd_d},     {"e", cmd_e},
+                 {"login", cmd_login}};
 
 void sbinit() {
     uchar buf[BSIZE];
     bread(0, buf);
     memcpy(&sb, buf, sizeof(sb));
+}
+
+int NCMD;
+
+int serve(char *buf, int len) {
+    // command
+    Log("uid=%u use command: %s", uid, buf);
+    char *p = strtok(buf, " \r\n");
+    if (!p) return 0;
+    int ret = 1;
+    for (int i = 0; i < NCMD; i++)
+        if (strcmp(p, cmd_table[i].name) == 0) {
+            ret = cmd_table[i].handler(p + strlen(p) + 1);
+            break;
+        }
+    if (ret == 1) {
+        PrtNo("No such command");
+    }
+    return ret;
 }
 
 int main(int argc, char *argv[]) {
@@ -924,11 +1097,15 @@ int main(int argc, char *argv[]) {
     assert(BSIZE % sizeof(struct dinode) == 0);
     assert(BSIZE % sizeof(struct dirent) == 0);
 
-    sbinit();
+    binfo(&ncyl, &nsec);
+    Log("ncyl=%d, nsec=%d", ncyl, nsec);
 
-    // command
-    static char buf[1024];
-    int NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
+    sbinit();
+    Log("Superblock initialized, %sformatted", sb.magic == MAGIC ? "" : "not ");
+    Log("size=%u, nblocks=%u, ninodes=%u", sb.size, sb.nblocks, sb.ninodes);
+
+    static char buf[4096];
+    NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
     while (1) {
         fgets(buf, sizeof(buf), stdin);
         if (feof(stdin)) break;
