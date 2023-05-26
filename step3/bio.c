@@ -51,10 +51,6 @@ void bread(int blockno, uchar *buf) {
 }
 
 void bwrite(int blockno, uchar *buf) {
-    int ffd = open("diskfile1", O_RDWR | O_CREAT, 0777);
-    lseek(ffd, blockno * 256, SEEK_SET);
-    write(ffd, buf, 256);
-    close(ffd);
     static char hexbuf[BSIZE * 2 + 1];
     uchar *p = buf;
     for (int i = 0; i < BSIZE; i++) {
