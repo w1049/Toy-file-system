@@ -240,6 +240,6 @@ Then you can start many clients:
 ```
 ./client 12345
 ```
-By default, a user can only read files from other users and cannot write to them. You can try it by yourself.
+By default, a user can only read files from other users and cannot write to them. You can try it by yourself. But don't use "f" when another user is online! I didn't handle this problem.
 
 In step3, all logs are printed in the shell.

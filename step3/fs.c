@@ -560,7 +560,7 @@ int cmd_f(char *args) {
             if (i + j < nmeta) buf[j / 8] |= 1 << (j % 8);
         bwrite(BBLOCK(i), buf);
     }
-
+    user->pwd = 0;
     // make root dir
     if (!icreate(T_DIR, NULL, 0, 0, 0b1111)) {
         msgprintf("Done\n");
