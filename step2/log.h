@@ -1,11 +1,13 @@
 #include <err.h>
 #include <stdio.h>
 
+#include "common.h"
+
 static FILE *log_file;
 
 static inline void log_init(const char *fname) {
     log_file = fopen(fname, "w");
-    if (log_file == NULL) err(1, "fopen %s", fname);
+    if (log_file == NULL) err(1, ERROR "fopen %s", fname);
 }
 
 static inline void log_close(void) { fclose(log_file); }

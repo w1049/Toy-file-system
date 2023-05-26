@@ -1,7 +1,5 @@
 #include "server.h"
 
-#define ERROR "\033[31m[Error]\033[0m "
-
 #define BUFSIZE 4096
 
 typedef struct {               // Represents a pool of connected descriptors
@@ -105,4 +103,5 @@ void mainloop(int port, void *(*client_init)(int),
         }
         check_clients(&pool, serve);
     }
+    close(sockfd);
 }

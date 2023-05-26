@@ -2,12 +2,15 @@ SRC = $(wildcard *.c)
 CC = gcc
 CFLAGS += -Wall -Werror -fsanitize=address -g -DDEBUG
 
-all: fs disk
+all: fs disk client
 
 fs: fs.o bio.o server.o client.o
 	$(CC) $(CFLAGS) $^ -o $@
 
 disk: disk.o server.o
+	$(CC) $(CFLAGS) $^ -o $@
+
+client: client.o clientmain.o
 	$(CC) $(CFLAGS) $^ -o $@
 
 include ${SRC:.c=.d}
@@ -21,6 +24,6 @@ include ${SRC:.c=.d}
 	rm -f $@.$$$$
 
 clean:
-	rm -f *.o *.d fs disk
+	rm -f *.o *.d fs disk client
 
 .PHONY: all clean

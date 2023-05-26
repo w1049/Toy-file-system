@@ -1,7 +1,5 @@
 #include "client.h"
 
-#define ERROR "\033[31m[Error]\033[0m "
-
 int init_client(int port) {
     int sockfd;
     sockfd = socket(AF_INET, SOCK_STREAM, 0);

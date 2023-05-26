@@ -1106,5 +1106,6 @@ int main(int argc, char *argv[]) {
     NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
     mainloop(atoi(argv[2]), client_init, serve);
 
+    close(serverfd);
     log_close();
 }

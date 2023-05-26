@@ -29,7 +29,7 @@ static int ncyl, nsec;
 void binfo(int *pncyl, int *pnsec) {
     send(fd, "I\n", 3, 0);
     int n = recv(fd, msg, 4096, 0);
-    if (n < 0) err(1, "recv()");
+    if (n < 0) err(1, ERROR "recv()");
     msg[n] = 0;
     sscanf(msg, "%d %d", pncyl, pnsec);
     ncyl = *pncyl, nsec = *pnsec;
@@ -40,7 +40,7 @@ void bread(int blockno, uchar *buf) {
     msgprintf("R %d %d\n", blockno / nsec, blockno % nsec);
     msgsend(fd);
     int n = recv(fd, msg, 4096, 0);
-    if (n < 0) err(1, "recv()");
+    if (n < 0) err(1, ERROR "recv()");
     char *data = &msg[4]; // "Yes xxxxx"
     for (int i = 0; i < BSIZE; i++) {
         int a = hex2int(data[i * 2]);
@@ -63,7 +63,7 @@ void bwrite(int blockno, uchar *buf) {
     // printf("send %s\n", msg);
     msgsend(fd);
     int n = recv(fd, msg, 4096, 0); // recv "Yes" or "No"
-    if (n < 0) err(1, "recv()");
+    if (n < 0) err(1, ERROR "recv()");
     // msg[n] = 0;
     // printf("Write recv: %s", msg);
 }

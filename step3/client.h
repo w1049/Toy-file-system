@@ -15,6 +15,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "common.h"
+
 int init_client(int port);
 
 #endif

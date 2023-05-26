@@ -14,6 +14,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "common.h"
+
 void mainloop(int port, void *(*client_init)(int),
           int (*serve)(int, char *, int, void *));
 

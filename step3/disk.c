@@ -93,7 +93,7 @@ int cmd_r(char *args) {
     usleep(tsleep * 1000);
     cur_cyl = cyl;
     msgprintf("Yes %s\n", buf);
-    Log("Delay %d ms, Read data: %s", tsleep, buf);
+    Log("Delay %d ms, Read successfully", tsleep);
     return 0;
 }
 int cmd_w(char *args) {
@@ -184,26 +184,26 @@ int main(int argc, char *argv[]) {
     // open file
     log_init("disk.log");
     int fd = open(diskfname, O_RDWR | O_CREAT, 0777);
-    if (fd < 0) err(1, "open %s", diskfname);
+    if (fd < 0) err(1, ERROR "open %s", diskfname);
 
     // stretch the file
     size_t filesize = ncyl * nsec * BLOCKSIZE;
     int ret = lseek(fd, filesize - 1, SEEK_SET);
-    if (ret < 0) close(fd), err(1, "lseek");
+    if (ret < 0) close(fd), err(1, ERROR "lseek");
 
     ret = write(fd, "", 1);
-    if (ret < 0) close(fd), err(1, "write last byte");
+    if (ret < 0) close(fd), err(1, ERROR "write last byte");
 
     // mmap
     diskfile = mmap(NULL, filesize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (diskfile == MAP_FAILED) close(fd), err(1, "mmap");
+    if (diskfile == MAP_FAILED) close(fd), err(1, ERROR "mmap");
 
     // command
     NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
     mainloop(atoi(argv[5]), client_init, serve);
 
     ret = munmap(diskfile, filesize);
-    if (ret < 0) close(fd), err(1, "munmap");
+    if (ret < 0) close(fd), err(1, ERROR "munmap");
     close(fd);
     log_close();
 }

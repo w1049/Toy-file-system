@@ -14,4 +14,6 @@ typedef unsigned int uint;
     } while (0)
 #define msgsend(fd) send(fd, msg, msgtmp - msg, 0);
 
+#define ERROR "\033[31m[Error]\033[0m "
+
 #endif
