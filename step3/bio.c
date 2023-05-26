@@ -1,11 +1,12 @@
-#include <string.h>
-#include <stdio.h>
+#include "bio.h"
+
 #include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
-#include "bio.h"
-#include "log.h"
 #include "client.h"
+#include "log.h"
 MSGDEF;
 
 // hex and dec
@@ -21,9 +22,7 @@ int fd;
 
 #define BSIZE 256
 
-void bioinit(int serverfd) {
-    fd = serverfd;
-}
+void bioinit(int serverfd) { fd = serverfd; }
 
 static int ncyl, nsec;
 void binfo(int *pncyl, int *pnsec) {
@@ -41,11 +40,13 @@ void bread(int blockno, uchar *buf) {
     msgsend(fd);
     int n = recv(fd, msg, 4096, 0);
     if (n < 0) err(1, ERROR "recv()");
-    char *data = &msg[4]; // "Yes xxxxx"
+    char *data = &msg[4];  // "Yes xxxxx"
     for (int i = 0; i < BSIZE; i++) {
         int a = hex2int(data[i * 2]);
         int b = hex2int(data[i * 2 + 1]);
-        if (a < 0 || b < 0) { return; }
+        if (a < 0 || b < 0) {
+            return;
+        }
         buf[i] = a * 16 + b;
     }
 }
@@ -62,7 +63,7 @@ void bwrite(int blockno, uchar *buf) {
     msgprintf("W %d %d %s\n", blockno / nsec, blockno % nsec, hexbuf);
     // printf("send %s\n", msg);
     msgsend(fd);
-    int n = recv(fd, msg, 4096, 0); // recv "Yes" or "No"
+    int n = recv(fd, msg, 4096, 0);  // recv "Yes" or "No"
     if (n < 0) err(1, ERROR "recv()");
     // msg[n] = 0;
     // printf("Write recv: %s", msg);

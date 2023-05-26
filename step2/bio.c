@@ -1,7 +1,8 @@
-#include <string.h>
-#include <stdio.h>
-
 #include "bio.h"
+
+#include <stdio.h>
+#include <string.h>
+
 #include "log.h"
 
 #define NCYL 1024
@@ -14,9 +15,7 @@ void binfo(int *ncyl, int *nsec) {
     *nsec = NSEC;
 }
 
-void bread(int blockno, uchar *buf) {
-    memcpy(buf, diskfile[blockno], 256);
-}
+void bread(int blockno, uchar *buf) { memcpy(buf, diskfile[blockno], 256); }
 
 void bwrite(int blockno, uchar *buf) {
     memcpy(diskfile[blockno], buf, 256);

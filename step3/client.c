@@ -16,14 +16,14 @@ int init_client(int port) {
     return sockfd;
 }
 
-    // char buf[4096];
-    // int n;
-    // while (1) {
-    //     fgets(buf, 1024, stdin);
-    //     n = send(sockfd, buf, strlen(buf), 0);
-    //     if (n < 0) err(1, ERROR "send()");
-    //     n = recv(sockfd, buf, 1024, 0);
-    //     if (n < 0) err(1, ERROR "recv()");
-    //     buf[n] = '\0';
-    //     printf("%s", buf);
-    // }
+// char buf[4096];
+// int n;
+// while (1) {
+//     fgets(buf, 1024, stdin);
+//     n = send(sockfd, buf, strlen(buf), 0);
+//     if (n < 0) err(1, ERROR "send()");
+//     n = recv(sockfd, buf, 1024, 0);
+//     if (n < 0) err(1, ERROR "recv()");
+//     buf[n] = '\0';
+//     printf("%s", buf);
+// }

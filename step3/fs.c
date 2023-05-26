@@ -10,9 +10,9 @@
 #include <unistd.h>
 
 #include "bio.h"
-#include "log.h"
-#include "common.h"
 #include "client.h"
+#include "common.h"
+#include "log.h"
 #include "server.h"
 MSGDEF;
 
@@ -34,10 +34,10 @@ enum {
 };
 
 struct dinode {               // 64 bytes
-    ushort type : 2;  // File type: 0empty, 1dir or 2file
-    ushort mode : 4;  // File mode: rwrw for owner and others
-    ushort uid : 10;  // Owner id
-    ushort nlink;     // Number of links to inode
+    ushort type : 2;          // File type: 0empty, 1dir or 2file
+    ushort mode : 4;          // File mode: rwrw for owner and others
+    ushort uid : 10;          // Owner id
+    ushort nlink;             // Number of links to inode
     uint mtime;               // Last modified time
     uint size;                // Size in bytes
     uint blocks;              // Number of blocks, may be larger than size
@@ -47,10 +47,10 @@ struct dinode {               // 64 bytes
 // inode in memory
 struct inode {
     uint inum;
-    ushort type : 2;  // File type: 0empty, 1dir or 2file
-    ushort mode : 4;  // File mode: rwrw for owner and others
-    ushort uid : 10;  // Owner id
-    ushort nlink;     // Number of links to inode
+    ushort type : 2;          // File type: 0empty, 1dir or 2file
+    ushort mode : 4;          // File mode: rwrw for owner and others
+    ushort uid : 10;          // Owner id
+    ushort nlink;             // Number of links to inode
     uint mtime;               // Last modified time
     uint size;                // Size in bytes
     uint blocks;              // Number of blocks, may be larger than size
@@ -117,6 +117,7 @@ struct clientitem {
 };
 struct clientitem *user;
 
+// init the clientitem
 void *client_init(int connfd) {
     struct clientitem *cli = malloc(sizeof(struct clientitem));
     cli->pwd = 0;
@@ -328,6 +329,8 @@ int bmap(struct inode *ip, uint bn) {
     }
 }
 
+// read from the inode
+// return the number of bytes read
 int readi(struct inode *ip, uchar *dst, uint off, uint n) {
     uchar buf[BSIZE];
     if (off > ip->size || off + n < off) return -1;
@@ -342,6 +345,8 @@ int readi(struct inode *ip, uchar *dst, uint off, uint n) {
     return n;
 }
 
+// write to the inode
+// return the number of bytes written
 // may change the size
 // will update
 int writei(struct inode *ip, uchar *src, uint off, uint n) {
@@ -374,8 +379,7 @@ int itest(struct inode *ip) {
     int true_blocks = 1 + (ip->size - 1) / BSIZE;
     if (true_blocks <= ip->blocks / 2) {
         Log("Block usage: %d/%d, recycle", true_blocks, ip->blocks);
-        for (int i = ip->blocks - 1; i > true_blocks; i--)
-            bfree(bmap(ip, i));
+        for (int i = ip->blocks - 1; i > true_blocks; i--) bfree(bmap(ip, i));
         ip->blocks = true_blocks;
         iupdate(ip);
     }
@@ -392,15 +396,15 @@ int itest(struct inode *ip) {
 #define PrtNo(x)           \
     do {                   \
         msgprintf("No\n"); \
-        Warn(x);          \
+        Warn(x);           \
     } while (0)
-#define CheckIP(x)               \
-    do {                         \
-        if (!ip) {               \
-            msgprintf("No\n");   \
+#define CheckIP(x)              \
+    do {                        \
+        if (!ip) {              \
+            msgprintf("No\n");  \
             Warn("ip is NULL"); \
-            return x;            \
-        }                        \
+            return x;           \
+        }                       \
     } while (0)
 
 #define CheckLogin()                                           \
@@ -424,38 +428,40 @@ int itest(struct inode *ip) {
 // for (int i = 0; i < argc; i++) Debug("argv[%d] = %s", i, argv[i]);
 // if (maxargs != MAXARGS) Debug("argv[argc] = %s", argv[argc]);
 
+// client socket
 int connfd;
 
-#define msgflush() \
-    do { \
+#define msgflush()                          \
+    do {                                    \
         send(connfd, msg, msgtmp - msg, 0); \
-        msgtmp = msg; \
+        msgtmp = msg;                       \
     } while (0)
 
-enum {
-    R = 0b10,
-    W = 0b01 
-};
+enum { R = 0b10, W = 0b01 };
 
+// check if user has permission
 static inline int checkPerm(uint inum, short perm) {
     struct inode *ip = iget(inum);
     CheckIP(0);
     int ret = 0;
-    if (ip->uid == user->uid) ret = 1;
+    if (ip->uid == user->uid)
+        ret = 1;
     else {
-        if ((ip->mode & perm) == perm) ret = 1;
-        else ret = 0;
+        if ((ip->mode & perm) == perm)
+            ret = 1;
+        else
+            ret = 0;
     }
     free(ip);
     return ret;
 }
 
-#define CheckPerm(inum, perm) \
-    do {             \
-        if (!checkPerm(inum, perm)) { \
+#define CheckPerm(inum, perm)           \
+    do {                                \
+        if (!checkPerm(inum, perm)) {   \
             PrtNo("Permission denied"); \
-            return 0; \
-        } \
+            return 0;                   \
+        }                               \
     } while (0)
 
 // create a file in parent pinum
@@ -550,10 +556,8 @@ int cmd_f(char *args) {
 
     // bitmap init
     memset(buf, 0, BSIZE);
-    for (int i = 0; i < sb.size; i += BPB)
-        bwrite(BBLOCK(i), buf);
-    for (int i = 0; i < NINODES; i += IPB)
-        bwrite(IBLOCK(i), buf);
+    for (int i = 0; i < sb.size; i += BPB) bwrite(BBLOCK(i), buf);
+    for (int i = 0; i < NINODES; i += IPB) bwrite(IBLOCK(i), buf);
 
     // mark meta blocks as in use
     for (int i = 0; i < nmeta; i += BPB) {
@@ -568,6 +572,7 @@ int cmd_f(char *args) {
     return 0;
 }
 
+// if name is valid for file or dir
 int is_name_valid(char *name) {
     int len = strlen(name);
     if (len >= MAXNAME) return 0;
@@ -581,6 +586,7 @@ int is_name_valid(char *name) {
     return 1;
 }
 
+// find in pwd
 // NINODES for not found
 // return inum of the file
 uint findinum(char *name) {
@@ -637,11 +643,11 @@ int delinum(uint inum) {
             if (de[i].inum == NINODES) continue;  // deleted
             memcpy(&newde[j++], &de[i], sizeof(struct dirent));
         }
-        assert (j == newn);
+        assert(j == newn);
         ip->size = newsiz;
         writei(ip, newbuf, 0, newsiz);
         free(newbuf);
-        itest(ip); // try to shrink
+        itest(ip);  // try to shrink
     }
 
     free(buf);
@@ -664,7 +670,7 @@ int cmd_mk(char *args) {
         PrtNo("Already exists!");
         return 0;
     }
-    CheckPerm(user->pwd, R|W);
+    CheckPerm(user->pwd, R | W);
     short mode = argc >= 2 ? (atoi(argv[1]) & 0b1111) : 0b1110;
     if (!icreate(T_FILE, argv[0], user->pwd, user->uid, mode)) PrtYes();
     return 0;
@@ -684,7 +690,7 @@ int cmd_mkdir(char *args) {
         PrtNo("Already exists!");
         return 0;
     }
-    CheckPerm(user->pwd, R|W);
+    CheckPerm(user->pwd, R | W);
     short mode = argc >= 2 ? (atoi(argv[1]) & 0b1111) : 0b1110;
     if (!icreate(T_DIR, argv[0], user->pwd, user->uid, mode)) PrtYes();
     return 0;
@@ -702,7 +708,7 @@ int cmd_rm(char *args) {
         return 0;
     }
     CheckPerm(inum, W);
-    CheckPerm(user->pwd, R|W);
+    CheckPerm(user->pwd, R | W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -722,6 +728,7 @@ int cmd_rm(char *args) {
     return 0;
 }
 
+// cd in pwd
 // 0 for success
 int _cd(char *name) {
     uint inum = findinum(name);
@@ -751,11 +758,11 @@ int cmd_cd(char *args) {
     }
     char *ptr = NULL;
     int backup = user->pwd;
-    if (argv[0][0] == '/') user->pwd = 0;
+    if (argv[0][0] == '/') user->pwd = 0;  // start from root
     char *p = strtok_r(argv[0], "/", &ptr);
     while (p) {
-        if (_cd(p) != 0) {
-            user->pwd = backup;
+        if (_cd(p) != 0) {       // if not success
+            user->pwd = backup;  // restore the pwd
             return 0;
         }
         p = strtok_r(NULL, "/", &ptr);
@@ -764,6 +771,7 @@ int cmd_cd(char *args) {
     PrtYes();
     return 0;
 }
+// rm empty dir
 int cmd_rmdir(char *args) {
     CheckFmt();
     Parse(MAXARGS);
@@ -776,8 +784,8 @@ int cmd_rmdir(char *args) {
         PrtNo("Not found!");
         return 0;
     }
-    CheckPerm(inum, R|W);
-    CheckPerm(user->pwd, R|W);
+    CheckPerm(inum, R | W);
+    CheckPerm(user->pwd, R | W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_DIR) {
@@ -872,22 +880,24 @@ int cmd_ls(char *args) {
     static char logbuf[4096], *logtmp;
     msgprintf("\33[1mType \tOwner\tUpdate time\tSize\tName\033[0m\n");
     logtmp = logbuf;
-    logtmp += sprintf(logtmp, "List files\nType \tOwner\tUpdate time\tSize\tName\n");
+    logtmp +=
+        sprintf(logtmp, "List files\nType \tOwner\tUpdate time\tSize\tName\n");
     for (int i = 0; i < n; i++) {
         time_t mtime = entries[i].mtime;
         struct tm *tmptr = localtime(&mtime);
         strftime(str, sizeof(str), "%m-%d %H:%M", tmptr);
         short d = entries[i].type == T_DIR;
-        short m = (d  << 4) | entries[i].mode;
+        short m = (d << 4) | entries[i].mode;
         static char a[] = "drwrw";
         for (int j = 0; j <= 4; j++) {
-            msgprintf("%c", m & (1 << (4-j)) ? a[j] : '-');
-            logtmp += sprintf(logtmp, "%c", m & (1 << (4-j)) ? a[j] : '-');
+            msgprintf("%c", m & (1 << (4 - j)) ? a[j] : '-');
+            logtmp += sprintf(logtmp, "%c", m & (1 << (4 - j)) ? a[j] : '-');
         }
         msgprintf("\t%u\t%s\t%d\t", entries[i].uid, str, entries[i].size);
         msgprintf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
         // WARN: BUFFER OVERFLOW
-        logtmp += sprintf(logtmp, "\t%u\t%s\t%d\t%s\n", entries[i].uid, str, entries[i].size, entries[i].name);
+        logtmp += sprintf(logtmp, "\t%u\t%s\t%d\t%s\n", entries[i].uid, str,
+                          entries[i].size, entries[i].name);
     }
     Log("%s", logbuf);
     free(entries);
@@ -1047,7 +1057,7 @@ int cmd_d(char *args) {
         writei(ip, buf, pos, copylen);
         ip->size -= len;
         iupdate(ip);
-        itest(ip); // try to shrink
+        itest(ip);  // try to shrink
     }
 
     free(ip);

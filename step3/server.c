@@ -60,7 +60,10 @@ void check_clients(pool *p, int (*serve)(int, char *, int, void *)) {
                     if (serve(connfd, s, strlen(s), p->client[i]) < 0) exit = 1;
                     s = strtok_r(NULL, "\r\n", &ptr);
                 }
-            } else if (n < 0) { printf("recv() error\n"); exit = 1; }
+            } else if (n < 0) {
+                printf("recv() error\n");
+                exit = 1;
+            }
             if (exit) {
                 close(connfd);
                 FD_CLR(connfd, &p->read_set);
@@ -72,7 +75,7 @@ void check_clients(pool *p, int (*serve)(int, char *, int, void *)) {
 }
 
 void mainloop(int port, void *(*client_init)(int),
-          int (*serve)(int, char *, int, void *)) {
+              int (*serve)(int, char *, int, void *)) {
     // create listen socket
     int sockfd;
     sockfd = socket(AF_INET, SOCK_STREAM, 0);

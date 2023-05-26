@@ -6,8 +6,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "log.h"
 #include "common.h"
+#include "log.h"
 #include "server.h"
 MSGDEF;
 
@@ -26,15 +26,15 @@ int ncyl, nsec, ttd;
 uchar *diskfile;
 int cur_cyl;
 
-#define PrtYes()         \
-    do {                 \
+#define PrtYes()            \
+    do {                    \
         msgprintf("Yes\n"); \
-        Log("Success");  \
+        Log("Success");     \
     } while (0)
-#define PrtNo(x)        \
-    do {                \
+#define PrtNo(x)           \
+    do {                   \
         msgprintf("No\n"); \
-        Warn(x);       \
+        Warn(x);           \
     } while (0)
 #define Parse(maxargs)       \
     char *argv[maxargs + 1]; \

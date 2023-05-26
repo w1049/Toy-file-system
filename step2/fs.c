@@ -10,8 +10,8 @@
 #include <unistd.h>
 
 #include "bio.h"
-#include "log.h"
 #include "common.h"
+#include "log.h"
 
 typedef unsigned int uint;
 
@@ -31,10 +31,10 @@ enum {
 };
 
 struct dinode {               // 64 bytes
-    ushort type : 2;  // File type: 0empty, 1dir or 2file
-    ushort mode : 4;  // File mode: rwrw for owner and others
-    ushort uid : 10;  // Owner id
-    ushort nlink;     // Number of links to inode
+    ushort type : 2;          // File type: 0empty, 1dir or 2file
+    ushort mode : 4;          // File mode: rwrw for owner and others
+    ushort uid : 10;          // Owner id
+    ushort nlink;             // Number of links to inode
     uint mtime;               // Last modified time
     uint size;                // Size in bytes
     uint blocks;              // Number of blocks, may be larger than size
@@ -44,10 +44,10 @@ struct dinode {               // 64 bytes
 // inode in memory
 struct inode {
     uint inum;
-    ushort type : 2;  // File type: 0empty, 1dir or 2file
-    ushort mode : 4;  // File mode: rwrw for owner and others
-    ushort uid : 10;  // Owner id
-    ushort nlink;     // Number of links to inode
+    ushort type : 2;          // File type: 0empty, 1dir or 2file
+    ushort mode : 4;          // File mode: rwrw for owner and others
+    ushort uid : 10;          // Owner id
+    ushort nlink;             // Number of links to inode
     uint mtime;               // Last modified time
     uint size;                // Size in bytes
     uint blocks;              // Number of blocks, may be larger than size
@@ -364,8 +364,7 @@ int itest(struct inode *ip) {
     int true_blocks = 1 + (ip->size - 1) / BSIZE;
     if (true_blocks <= ip->blocks / 2) {
         Log("Block usage: %d/%d, recycle", true_blocks, ip->blocks);
-        for (int i = ip->blocks - 1; i > true_blocks; i--)
-            bfree(bmap(ip, i));
+        for (int i = ip->blocks - 1; i > true_blocks; i--) bfree(bmap(ip, i));
         ip->blocks = true_blocks;
         iupdate(ip);
     }
@@ -374,31 +373,31 @@ int itest(struct inode *ip) {
 
 #define MAGIC 0x5346594d
 
-#define PrtYes()            \
-    do {                    \
-        printf("Yes\n");    \
-        Log("Success");     \
+#define PrtYes()         \
+    do {                 \
+        printf("Yes\n"); \
+        Log("Success");  \
     } while (0)
-#define PrtNo(x)           \
-    do {                   \
-        printf("No\n");    \
-        Warn(x);           \
+#define PrtNo(x)        \
+    do {                \
+        printf("No\n"); \
+        Warn(x);        \
     } while (0)
-#define CheckIP(x)               \
-    do {                         \
-        if (!ip) {               \
-            printf("No\n");   \
+#define CheckIP(x)              \
+    do {                        \
+        if (!ip) {              \
+            printf("No\n");     \
             Warn("ip is NULL"); \
-            return x;            \
-        }                        \
+            return x;           \
+        }                       \
     } while (0)
 
-#define CheckLogin()                                           \
-    do {                                                       \
-        if (uid == 0) {                                  \
+#define CheckLogin()                                        \
+    do {                                                    \
+        if (uid == 0) {                                     \
             printf("Please enter your UID: login <uid>\n"); \
-            return 0;                                          \
-        }                                                      \
+            return 0;                                       \
+        }                                                   \
     } while (0)
 #define CheckFmt()                  \
     do {                            \
@@ -414,31 +413,31 @@ int itest(struct inode *ip) {
 // for (int i = 0; i < argc; i++) Debug("argv[%d] = %s", i, argv[i]);
 // if (maxargs != MAXARGS) Debug("argv[argc] = %s", argv[argc]);
 
-enum {
-    R = 0b10,
-    W = 0b01 
-};
+enum { R = 0b10, W = 0b01 };
 
 // check if user has permission
 static inline int checkPerm(uint inum, short perm) {
     struct inode *ip = iget(inum);
     CheckIP(0);
     int ret = 0;
-    if (ip->uid == uid) ret = 1;
+    if (ip->uid == uid)
+        ret = 1;
     else {
-        if ((ip->mode & perm) == perm) ret = 1;
-        else ret = 0;
+        if ((ip->mode & perm) == perm)
+            ret = 1;
+        else
+            ret = 0;
     }
     free(ip);
     return ret;
 }
 
-#define CheckPerm(inum, perm) \
-    do {             \
-        if (!checkPerm(inum, perm)) { \
+#define CheckPerm(inum, perm)           \
+    do {                                \
+        if (!checkPerm(inum, perm)) {   \
             PrtNo("Permission denied"); \
-            return 0; \
-        } \
+            return 0;                   \
+        }                               \
     } while (0)
 
 // create a file in parent pinum
@@ -533,10 +532,8 @@ int cmd_f(char *args) {
 
     // bitmap init
     memset(buf, 0, BSIZE);
-    for (int i = 0; i < sb.size; i += BPB)
-        bwrite(BBLOCK(i), buf);
-    for (int i = 0; i < NINODES; i += IPB)
-        bwrite(IBLOCK(i), buf);
+    for (int i = 0; i < sb.size; i += BPB) bwrite(BBLOCK(i), buf);
+    for (int i = 0; i < NINODES; i += IPB) bwrite(IBLOCK(i), buf);
 
     // mark meta blocks as in use
     for (int i = 0; i < nmeta; i += BPB) {
@@ -622,11 +619,11 @@ int delinum(uint inum) {
             if (de[i].inum == NINODES) continue;  // deleted
             memcpy(&newde[j++], &de[i], sizeof(struct dirent));
         }
-        assert (j == newn);
+        assert(j == newn);
         ip->size = newsiz;
         writei(ip, newbuf, 0, newsiz);
         free(newbuf);
-        itest(ip); // try to shrink
+        itest(ip);  // try to shrink
     }
 
     free(buf);
@@ -649,7 +646,7 @@ int cmd_mk(char *args) {
         PrtNo("Already exists!");
         return 0;
     }
-    CheckPerm(pwd, R|W);
+    CheckPerm(pwd, R | W);
     short mode = argc >= 2 ? (atoi(argv[1]) & 0b1111) : 0b1110;
     if (!icreate(T_FILE, argv[0], pwd, uid, mode)) PrtYes();
     return 0;
@@ -669,7 +666,7 @@ int cmd_mkdir(char *args) {
         PrtNo("Already exists!");
         return 0;
     }
-    CheckPerm(pwd, R|W);
+    CheckPerm(pwd, R | W);
     short mode = argc >= 2 ? (atoi(argv[1]) & 0b1111) : 0b1110;
     if (!icreate(T_DIR, argv[0], pwd, uid, mode)) PrtYes();
     return 0;
@@ -687,7 +684,7 @@ int cmd_rm(char *args) {
         return 0;
     }
     CheckPerm(inum, W);
-    CheckPerm(pwd, R|W);
+    CheckPerm(pwd, R | W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_FILE) {
@@ -737,11 +734,11 @@ int cmd_cd(char *args) {
     }
     char *ptr = NULL;
     int backup = pwd;
-    if (argv[0][0] == '/') pwd = 0; // start from root
+    if (argv[0][0] == '/') pwd = 0;  // start from root
     char *p = strtok_r(argv[0], "/", &ptr);
     while (p) {
-        if (_cd(p) != 0) { // if not success
-            pwd = backup; // restore the pwd
+        if (_cd(p) != 0) {  // if not success
+            pwd = backup;   // restore the pwd
             return 0;
         }
         p = strtok_r(NULL, "/", &ptr);
@@ -763,8 +760,8 @@ int cmd_rmdir(char *args) {
         PrtNo("Not found!");
         return 0;
     }
-    CheckPerm(inum, R|W);
-    CheckPerm(pwd, R|W);
+    CheckPerm(inum, R | W);
+    CheckPerm(pwd, R | W);
     struct inode *ip = iget(inum);
     CheckIP(0);
     if (ip->type != T_DIR) {
@@ -859,22 +856,24 @@ int cmd_ls(char *args) {
     static char logbuf[4096], *logtmp;
     printf("\33[1mType \tOwner\tUpdate time\tSize\tName\033[0m\n");
     logtmp = logbuf;
-    logtmp += sprintf(logtmp, "List files\nType \tOwner\tUpdate time\tSize\tName\n");
+    logtmp +=
+        sprintf(logtmp, "List files\nType \tOwner\tUpdate time\tSize\tName\n");
     for (int i = 0; i < n; i++) {
         time_t mtime = entries[i].mtime;
         struct tm *tmptr = localtime(&mtime);
         strftime(str, sizeof(str), "%m-%d %H:%M", tmptr);
         short d = entries[i].type == T_DIR;
-        short m = (d  << 4) | entries[i].mode;
+        short m = (d << 4) | entries[i].mode;
         static char a[] = "drwrw";
         for (int j = 0; j <= 4; j++) {
-            printf("%c", m & (1 << (4-j)) ? a[j] : '-');
-            logtmp += sprintf(logtmp, "%c", m & (1 << (4-j)) ? a[j] : '-');
+            printf("%c", m & (1 << (4 - j)) ? a[j] : '-');
+            logtmp += sprintf(logtmp, "%c", m & (1 << (4 - j)) ? a[j] : '-');
         }
         printf("\t%u\t%s\t%d\t", entries[i].uid, str, entries[i].size);
         printf(d ? "\033[34m\33[1m%s\033[0m\n" : "%s\n", entries[i].name);
         // WARN: BUFFER OVERFLOW
-        logtmp += sprintf(logtmp, "\t%u\t%s\t%d\t%s\n", entries[i].uid, str, entries[i].size, entries[i].name);
+        logtmp += sprintf(logtmp, "\t%u\t%s\t%d\t%s\n", entries[i].uid, str,
+                          entries[i].size, entries[i].name);
     }
     Log("%s", logbuf);
     free(entries);
@@ -1034,7 +1033,7 @@ int cmd_d(char *args) {
         writei(ip, buf, pos, copylen);
         ip->size -= len;
         iupdate(ip);
-        itest(ip); // try to shrink
+        itest(ip);  // try to shrink
     }
 
     free(ip);

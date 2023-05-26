@@ -6,8 +6,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "log.h"
 #include "common.h"
+#include "log.h"
 
 // hex and dec
 static inline int hex2int(char ch) {
@@ -32,7 +32,7 @@ int cur_cyl;
 #define PrtNo(x)        \
     do {                \
         printf("No\n"); \
-        Warn(x);       \
+        Warn(x);        \
     } while (0)
 #define Parse(maxargs)       \
     char *argv[maxargs + 1]; \
