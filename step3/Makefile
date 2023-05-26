@@ -4,7 +4,7 @@ CFLAGS += -Wall -Werror -fsanitize=address -g -DDEBUG
 
 all: fs disk
 
-fs: fs.o bio.o server.o
+fs: fs.o bio.o server.o client.o
 	$(CC) $(CFLAGS) $^ -o $@
 
 disk: disk.o server.o

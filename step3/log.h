@@ -13,18 +13,21 @@ static inline void log_close(void) { fclose(log_file); }
 #define Log(format, ...)                                         \
     do {                                                         \
         fprintf(log_file, "[INFO] " format "\n", ##__VA_ARGS__); \
+        printf("[INFO] " format "\n", ##__VA_ARGS__); \
         fflush(log_file);                                        \
     } while (0)
 
 #define Warn(format, ...)                                        \
     do {                                                         \
         fprintf(log_file, "[WARN] " format "\n", ##__VA_ARGS__); \
+        printf("[WARN] " format "\n", ##__VA_ARGS__); \
         fflush(log_file);                                        \
     } while (0)
 
 #define Error(format, ...)                                        \
     do {                                                          \
         fprintf(log_file, "[ERROR] " format "\n", ##__VA_ARGS__); \
+        printf("[ERROR] " format "\n", ##__VA_ARGS__); \
         fflush(log_file);                                         \
     } while (0)
 
@@ -32,6 +35,7 @@ static inline void log_close(void) { fclose(log_file); }
 #define Debug(format, ...)                                        \
     do {                                                          \
         fprintf(log_file, "[DEBUG] " format "\n", ##__VA_ARGS__); \
+        printf("[DEBUG] " format "\n", ##__VA_ARGS__); \
         fflush(log_file);                                         \
     } while (0)
 #else

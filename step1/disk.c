@@ -32,7 +32,7 @@ int cur_cyl;
 #define PrtNo(x)        \
     do {                \
         printf("No\n"); \
-        Error(x);       \
+        Warn(x);       \
     } while (0)
 #define Parse(maxargs)       \
     char *argv[maxargs + 1]; \

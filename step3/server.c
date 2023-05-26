@@ -2,7 +2,7 @@
 
 #define ERROR "\033[31m[Error]\033[0m "
 
-#define BUFSIZE 1024
+#define BUFSIZE 4096
 
 typedef struct {               // Represents a pool of connected descriptors
     int maxfd;                 // Largest descriptor in read_set
@@ -51,12 +51,18 @@ void check_clients(pool *p, int (*serve)(int, char *, int, void *)) {
         if ((connfd > 0) && (FD_ISSET(connfd, &p->ready_set))) {
             p->nready--;
             int exit = 1;
-            if ((n = recv(connfd, buf, BUFSIZE, 0)) != 0) {
+            n = recv(connfd, buf, BUFSIZE, 0);
+            if (n > 0) {
                 buf[n] = 0;
                 printf("Server received %d bytes on fd %d\n", n, connfd);
                 exit = 0;
-                if (serve(connfd, buf, n, p->client[i]) < 0) exit = 1;
-            }
+                char *ptr = NULL;
+                char *s = strtok_r(buf, "\r\n", &ptr);
+                while (s) {
+                    if (serve(connfd, s, strlen(s), p->client[i]) < 0) exit = 1;
+                    s = strtok_r(NULL, "\r\n", &ptr);
+                }
+            } else if (n < 0) { printf("recv() error\n"); exit = 1; }
             if (exit) {
                 close(connfd);
                 FD_CLR(connfd, &p->read_set);

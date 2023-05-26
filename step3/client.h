@@ -1,5 +1,6 @@
-#ifndef __SERVER_H__
-#define __SERVER_H__
+#ifndef __CLIENT_H__
+#define __CLIENT_H__
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <err.h>
@@ -14,7 +15,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-void mainloop(int port, void *(*client_init)(int),
-          int (*serve)(int, char *, int, void *));
+int init_client(int port);
 
 #endif

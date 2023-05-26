@@ -359,13 +359,13 @@ int writei(struct inode *ip, uchar *src, uint off, uint n) {
 #define PrtNo(x)        \
     do {                \
         printf("No\n"); \
-        Error(x);       \
+        Warn(x);       \
     } while (0)
 #define CheckIP(x)               \
     do {                         \
         if (!ip) {               \
             printf("No\n");      \
-            Error("ip is NULL"); \
+            Warn("ip is NULL"); \
             return x;            \
         }                        \
     } while (0)

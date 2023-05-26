@@ -12,6 +12,7 @@
 #include "bio.h"
 #include "log.h"
 #include "common.h"
+#include "client.h"
 #include "server.h"
 MSGDEF;
 
@@ -168,7 +169,7 @@ void bfree(uint bno) {
 // return NULL if not found
 struct inode *iget(uint inum) {
     if (inum < 0 || inum >= sb.ninodes) {
-        Warn("iget: inum out of range");
+        Warn("iget: inum %d out of range", inum);
         return NULL;
     }
     uchar buf[BSIZE];
@@ -391,13 +392,13 @@ int itest(struct inode *ip) {
 #define PrtNo(x)           \
     do {                   \
         msgprintf("No\n"); \
-        Error(x);          \
+        Warn(x);          \
     } while (0)
 #define CheckIP(x)               \
     do {                         \
         if (!ip) {               \
             msgprintf("No\n");   \
-            Error("ip is NULL"); \
+            Warn("ip is NULL"); \
             return x;            \
         }                        \
     } while (0)
@@ -487,6 +488,7 @@ int icreate(short type, char *name, uint pinum, ushort uid, ushort perm) {
     if (pinum != inum) {  // root will not enter here
                           // for normal files, add it to the parent directory
         ip = iget(pinum);
+        CheckIP(1);
         struct dirent de;
         de.inum = inum;
         strcpy(de.name, name);
@@ -520,14 +522,13 @@ int parse(char *line, char *argv[], int lim) {
     return argc;
 }
 
+int ncyl, nsec;
 // return a negative value to exit
 int cmd_f(char *args) {
     CheckLogin();
     uchar buf[BSIZE];
 
     // calculate args and write superblock
-    int ncyl, nsec;
-    binfo(&ncyl, &nsec);
     fsize = ncyl * nsec;
     Log("ncyl=%d nsec=%d fsize=%d", ncyl, nsec, fsize);
     nbitmap = (fsize / BPB) + 1;
@@ -548,6 +549,13 @@ int cmd_f(char *args) {
     memset(buf, 0, BSIZE);
     memcpy(buf, &sb, sizeof(sb));
     bwrite(0, buf);
+
+    // bitmap init
+    memset(buf, 0, BSIZE);
+    for (int i = 0; i < sb.size; i += BPB)
+        bwrite(BBLOCK(i), buf);
+    for (int i = 0; i < NINODES; i += IPB)
+        bwrite(IBLOCK(i), buf);
 
     // mark meta blocks as in use
     for (int i = 0; i < nmeta; i += BPB) {
@@ -834,6 +842,7 @@ int cmd_ls(char *args) {
         if (strcmp(de[i].name, ".") == 0 || strcmp(de[i].name, "..") == 0)
             continue;
         struct inode *sub = iget(de[i].inum);
+        CheckIP(0);
         entries[n].type = sub->type;
         strcpy(entries[n].name, de[i].name);
         entries[n].mtime = sub->mtime;
@@ -1078,16 +1087,24 @@ int serve(int fd, char *buf, int len, void *cli) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) errx(1, "Usage: %s <Port>", argv[0]);
+    if (argc < 2) errx(1, "Usage: %s <DiskPort> <FSPort>", argv[0]);
     log_init("fs.log");
 
     assert(BSIZE % sizeof(struct dinode) == 0);
     assert(BSIZE % sizeof(struct dirent) == 0);
 
+    int serverfd = init_client(atoi(argv[1]));
+    Log("Connected to disk server");
+    bioinit(serverfd);
+    binfo(&ncyl, &nsec);
+    Log("ncyl=%d, nsec=%d", ncyl, nsec);
+
     sbinit();
+    Log("Superblock initialized, %sformatted", sb.magic == MAGIC ? "" : "not ");
+    Log("size=%u, nblocks=%u, ninodes=%u", sb.size, sb.nblocks, sb.ninodes);
 
     NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
-    mainloop(atoi(argv[1]), client_init, serve);
+    mainloop(atoi(argv[2]), client_init, serve);
 
     log_close();
 }

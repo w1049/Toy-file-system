@@ -5,4 +5,13 @@ typedef unsigned char uchar;
 typedef unsigned short ushort;
 typedef unsigned int uint;
 
+#define MSGSIZE 4096
+#define MSGDEF static char msg[MSGSIZE], *msgtmp
+#define msginit() msgtmp = msg
+#define msgprintf(...)                            \
+    do {                                          \
+        msgtmp += sprintf(msgtmp, ##__VA_ARGS__); \
+    } while (0)
+#define msgsend(fd) send(fd, msg, msgtmp - msg, 0);
+
 #endif

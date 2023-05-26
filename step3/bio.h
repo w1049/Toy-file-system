@@ -3,6 +3,7 @@
 
 #include "common.h"
 
+void bioinit(int serverfd);
 void binfo(int *ncyl, int *nsec);
 void bread(int blockno, uchar *buf);
 void bwrite(int blockno, uchar *buf);
