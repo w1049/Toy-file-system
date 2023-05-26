@@ -230,3 +230,14 @@ drwr-	1	05-26 22:03	32	e
 [INFO] use command: e
 [INFO] Exit
 ```
+# Step 3
+```
+make
+./disk 1024 63 5 diskfile 1234
+./fs 1234 12345
+```
+Then you can start many clients:
+```
+./client 12345
+```
+By default, a user can only read files from other users and cannot write to them. You can try it by yourself.

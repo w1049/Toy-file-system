@@ -563,7 +563,7 @@ int cmd_f(char *args) {
 
     // make root dir
     if (!icreate(T_DIR, NULL, 0, 0, 0b1111)) {
-        printf("Done\n");
+        msgprintf("Done\n");
         Log("Success");
     }
     return 0;
