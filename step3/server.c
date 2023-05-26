@@ -1,3 +1,7 @@
+//
+// Server functions
+//
+
 #include "server.h"
 
 #define BUFSIZE 4096

@@ -1,3 +1,7 @@
+//
+// Client functions
+//
+
 #include "client.h"
 
 int init_client(int port) {

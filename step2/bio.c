@@ -1,3 +1,7 @@
+//
+// Block Input / Output
+//
+
 #include "bio.h"
 
 #include <stdio.h>
@@ -19,10 +23,6 @@ void bread(int blockno, uchar *buf) { memcpy(buf, diskfile[blockno], 256); }
 
 void bwrite(int blockno, uchar *buf) {
     memcpy(diskfile[blockno], buf, 256);
-    FILE *fp = fopen("diskfile", "w");
-    fseek(fp, blockno * 256, SEEK_SET);
-    fwrite(buf, 256, 1, fp);
-    fclose(fp);
     // char str[25565], *s = str;
     // s += sprintf(s, "bwrite: blockno=%d, bufdata:\n", blockno);
     // for (int i = 0; i < 256; i++) {
