@@ -165,7 +165,7 @@ int serve(int fd, char *buf, int len, void *) {
     if (ret == 1) {
         PrtNo("No such command");
     }
-    send(fd, msg, msgtmp - msg, 0);
+    msgsend(fd);
     return ret;
 }
 

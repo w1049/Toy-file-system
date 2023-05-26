@@ -544,7 +544,10 @@ int cmd_f(char *args) {
     }
 
     // make root dir
-    if (!icreate(T_DIR, NULL, 0, 0, 0b1111)) PrtYes();
+    if (!icreate(T_DIR, NULL, 0, 0, 0b1111)) {
+        printf("Done\n");
+        Log("Success");
+    }
     return 0;
 }
 
@@ -1071,25 +1074,6 @@ void sbinit() {
     memcpy(&sb, buf, sizeof(sb));
 }
 
-int NCMD;
-
-int serve(char *buf, int len) {
-    // command
-    Log("uid=%u use command: %s", uid, buf);
-    char *p = strtok(buf, " \r\n");
-    if (!p) return 0;
-    int ret = 1;
-    for (int i = 0; i < NCMD; i++)
-        if (strcmp(p, cmd_table[i].name) == 0) {
-            ret = cmd_table[i].handler(p + strlen(p) + 1);
-            break;
-        }
-    if (ret == 1) {
-        PrtNo("No such command");
-    }
-    return ret;
-}
-
 int main(int argc, char *argv[]) {
     log_init("fs.log");
 
@@ -1104,7 +1088,7 @@ int main(int argc, char *argv[]) {
     Log("size=%u, nblocks=%u, ninodes=%u", sb.size, sb.nblocks, sb.ninodes);
 
     static char buf[4096];
-    NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
+    int NCMD = sizeof(cmd_table) / sizeof(cmd_table[0]);
     while (1) {
         fgets(buf, sizeof(buf), stdin);
         if (feof(stdin)) break;

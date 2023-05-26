@@ -431,12 +431,6 @@ int itest(struct inode *ip) {
 // client socket
 int connfd;
 
-#define msgflush()                          \
-    do {                                    \
-        send(connfd, msg, msgtmp - msg, 0); \
-        msgtmp = msg;                       \
-    } while (0)
-
 enum { R = 0b10, W = 0b01 };
 
 // check if user has permission
@@ -568,7 +562,10 @@ int cmd_f(char *args) {
     }
 
     // make root dir
-    if (!icreate(T_DIR, NULL, 0, 0, 0b1111)) PrtYes();
+    if (!icreate(T_DIR, NULL, 0, 0, 0b1111)) {
+        printf("Done\n");
+        Log("Success");
+    }
     return 0;
 }
 
@@ -1114,7 +1111,7 @@ int serve(int fd, char *buf, int len, void *cli) {
     if (ret == 1) {
         PrtNo("No such command");
     }
-    send(fd, msg, msgtmp - msg, 0);
+    msgsend(fd);
     return ret;
 }
 

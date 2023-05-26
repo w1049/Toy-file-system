@@ -14,7 +14,6 @@ typedef struct {               // Represents a pool of connected descriptors
     int maxi;                  // High water index into client array
     int clientfd[FD_SETSIZE];  // Set of active descriptors
     void *client[FD_SETSIZE];
-    int exit;
 } pool;
 
 void init_pool(int listenfd, pool *p) {
